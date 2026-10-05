@@ -1,0 +1,78 @@
+name: pisense
+
+services:
+  # ==========================================================
+  # BRIDGE: по умолчанию в режиме mock (датчики эмулируются).
+  # Реальное железо подключается файлом docker-compose.pi.yml
+  # ==========================================================
+  pisense-bridge:
+    build:
+      context: .                    # корень репозитория: нужен родительский pom
+      dockerfile: bridge/Dockerfile
+    image: pisense-bridge
+    container_name: pisense-bridge
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      pisense-server:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${BRIDGE_PROFILE:-mock}
+      PISENSE_SERVER_URL: http://pisense-server:9090
+      JAVA_OPTS: "-XX:+UseSerialGC -Xms32m -Xmx96m -XX:MaxMetaspaceSize=64m"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q UP"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # ==========================================================
+  # SERVER: принимает JSON, пишет в Postgres
+  # ==========================================================
+  pisense-server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: pisense-server
+    container_name: pisense-server
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    depends_on:
+      pisense-db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pisense-db:5432/pisense
+      SPRING_DATASOURCE_USERNAME: pisense
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pisense}
+      JAVA_OPTS: "-XX:+UseSerialGC -Xms64m -Xmx256m"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s   # Spring Boot на ARM стартует медленно
+
+  # ==========================================================
+  # DB: Postgres, файлы базы лежат на диске хоста (вне контейнера)
+  # ==========================================================
+  pisense-db:
+    image: postgres:16.1   # есть сборки и для amd64, и для arm64
+    container_name: pisense-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pisense
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pisense}
+      POSTGRES_DB: pisense
+    ports:
+      - "127.0.0.1:5432:5432"   # только localhost: удобно подключаться из IDE
+    volumes:
+      # Bind-mount каталога хоста; путь задаётся в .env
+      - ${PISENSE_DATA_DIR:-./data}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

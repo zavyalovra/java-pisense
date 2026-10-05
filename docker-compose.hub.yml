@@ -1,0 +1,5 @@
+services:
+  pisense-bridge:
+    image: zavyalovra/pisense-bridge:latest
+  pisense-server:
+    image: zavyalovra/pisense-server:latest

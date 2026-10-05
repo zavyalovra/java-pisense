@@ -1,0 +1,16 @@
+# Оверрайд ТОЛЬКО для Raspberry Pi: пробрасывает шины внутрь контейнера.
+# Запуск: docker compose -f docker-compose.yml -f docker-compose.pi.yml up -d
+# или один раз задать в .env: COMPOSE_FILE=docker-compose.yml:docker-compose.pi.yml
+services:
+  pisense-bridge:
+    platform: linux/arm64            # Pi с 64-битной ОС (Cortex-A53)
+    environment:
+      SPRING_PROFILES_ACTIVE: pi     # включает реальные драйверы вместо mock
+    devices:
+      - /dev/i2c-1:/dev/i2c-1        # I2C
+      - /dev/i2c-2:/dev/i2c-2
+      - /dev/spidev0.0:/dev/spidev0.0   # SPI
+      - /dev/spidev0.1:/dev/spidev0.1
+    volumes:
+      # 1-Wire: датчики видны как файлы в /sys/bus/w1/devices/28-xxxx/w1_slave
+      - /sys/bus/w1/devices:/sys/bus/w1/devices:ro
