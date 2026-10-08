@@ -22,6 +22,16 @@ public class MockSensorReader implements SensorReader {
     }
 
     @Override
+    public BusType getBusType() {
+        return null;
+    }
+
+    @Override
+    public String getAddress() {
+        return "";
+    }
+
+    @Override
     public double read() {
         double wave = Math.sin(System.currentTimeMillis() / 60_000.0);
         double noise = ThreadLocalRandom.current().nextDouble(-0.1, 0.1) * amplitude;

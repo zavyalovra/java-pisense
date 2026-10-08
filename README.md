@@ -51,7 +51,7 @@
 |---|---|---|---|
 | GET | `/` | `text/html` | Домашняя страница со статистикой |
 | POST | `/api/v1/measurements` | `201 Created` / `200 OK` | Приём батча от bridge, идемпотентная запись в Postgres |
-| GET | `/api/v1/measurements` | `Page<MeasurementDto>` | История измерений с фильтрами и пагинацией |
+| GET | `/api/v1/measurements?sensorId&type&from&to&page&size` | `Page<MeasurementDto>` | История измерений с фильтрами и пагинацией |
 | GET | `/api/v1/measurements/latest` | `List<MeasurementDto>` | Последнее измерение по каждому датчику |
 | GET | `/actuator/health` | `HealthDto` | Проверка здоровья сервиса и БД |
 
@@ -74,3 +74,19 @@ docker run --privileged --rm tonistiigi/binfmt --install arm64   # один ра
 docker buildx build --platform linux/arm64 -f bridge/Dockerfile -t pisense-bridge --load .
 docker save pisense-bridge | ssh pi@raspberrypi docker load
 ```
+# API контракт
+```json
+{
+    "batchId": "uuid",
+    "measurements": [
+        {
+          "type": "TEMPERATURE", 
+          "busType": "ONE_WIRE", 
+          "busAddress": "28 FF 64 1E 83 15 03 8E",
+          "value": 22.4, 
+          "measuredAt": "2026-10-08T10:15:00Z"
+        }
+    ]
+}
+```
+Единица измерения не передается: её определяет server по типу датчика.

@@ -1,4 +1,4 @@
-package com.github.zavyalovra.pisense.sensor;
+package com.github.zavyalovra.pisense.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
