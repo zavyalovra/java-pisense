@@ -7,14 +7,16 @@ FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
 
 # Родительский pom и конфиги нужны Maven для разрешения parent (контекст = корень репо)
-# pom соседнего модуля нужен, потому что родитель перечисляет его в <modules>
+# pom остальных модулей нужен, потому что родитель перечисляет их в <modules>
 COPY pom.xml lombok.config checkstyle.xml suppressions.xml ./
+COPY common/pom.xml common/pom.xml
 COPY bridge/pom.xml bridge/pom.xml
 COPY server/pom.xml server/pom.xml
+COPY common/src common/src
 COPY bridge/src bridge/src
 
 # Кэш ~/.m2 между сборками: зависимости не скачиваются повторно
-# -pl bridge -am: собираем только bridge и его родителя
+# -pl bridge -am: собираем только bridge, common и родителя
 RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -ntp -pl bridge -am package -DskipTests
 

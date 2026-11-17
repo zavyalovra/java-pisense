@@ -6,9 +6,12 @@ FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
 
 # Родительский pom и конфиги (контекст сборки = корень репозитория)
+# pom остальных модулей нужен, потому что родитель перечисляет их в <modules>
 COPY pom.xml lombok.config checkstyle.xml suppressions.xml ./
+COPY common/pom.xml common/pom.xml
 COPY server/pom.xml server/pom.xml
 COPY bridge/pom.xml bridge/pom.xml
+COPY common/src common/src
 COPY server/src server/src
 
 # Кэш ~/.m2 между сборками

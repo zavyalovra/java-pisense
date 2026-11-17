@@ -14,6 +14,13 @@
     <name>PiSense Server</name>
 
     <dependencies>
+        <!-- Общий контракт: SensorType, BusType, DTO обмена с bridge -->
+        <dependency>
+            <groupId>com.github.zavyalovra</groupId>
+            <artifactId>pisense-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>

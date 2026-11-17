@@ -76,3 +76,17 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # ==========================================================
+  # OpenAPI: описание в формате Swagger, файлы базы лежат на диске хоста (вне контейнера)
+  # ==========================================================
+  swagger-ui:
+    image: swaggerapi/swagger-ui:latest
+    container_name: swagger-ui
+    ports:
+      - "8081:8080"
+    environment:
+      SWAGGER_JSON: /spec/openapi.yaml
+    volumes:
+      - ./docs/openapi.yaml:/spec/openapi.yaml:ro
+    restart: unless-stopped

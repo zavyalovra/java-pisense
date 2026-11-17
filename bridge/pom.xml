@@ -13,7 +13,36 @@
 
     <name>PiSense Bridge</name>
 
+    <properties>
+        <pi4j.version>2.6.0</pi4j.version>
+    </properties>
+
     <dependencies>
+        <!-- Общий контракт: SensorType, BusType, DTO обмена с server -->
+        <dependency>
+            <groupId>com.github.zavyalovra</groupId>
+            <artifactId>pisense-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Pi4J: доступ к шинам I2C/SPI на Raspberry Pi.
+             Плагины подключаются через ServiceLoader в Pi4J.newAutoContext(). -->
+        <dependency>
+            <groupId>com.pi4j</groupId>
+            <artifactId>pi4j-core</artifactId>
+            <version>${pi4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.pi4j</groupId>
+            <artifactId>pi4j-plugin-raspberrypi</artifactId>
+            <version>${pi4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.pi4j</groupId>
+            <artifactId>pi4j-plugin-linuxfs</artifactId>
+            <version>${pi4j.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

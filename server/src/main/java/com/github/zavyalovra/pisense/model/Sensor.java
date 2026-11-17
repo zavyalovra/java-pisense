@@ -1,5 +1,7 @@
 package com.github.zavyalovra.pisense.model;
 
+import com.github.zavyalovra.pisense.common.model.BusType;
+import com.github.zavyalovra.pisense.common.model.SensorType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

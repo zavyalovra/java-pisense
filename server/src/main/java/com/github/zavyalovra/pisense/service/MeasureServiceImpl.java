@@ -1,8 +1,8 @@
 package com.github.zavyalovra.pisense.service;
 
+import com.github.zavyalovra.pisense.common.dto.MeasurementDto;
 import com.github.zavyalovra.pisense.dao.MeasurementsRepository;
 import com.github.zavyalovra.pisense.dao.mappers.MeasurementsMapper;
-import com.github.zavyalovra.pisense.dto.MeasureResponseDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,9 +20,9 @@ public class MeasureServiceImpl implements MeasureService {
     }
 
     @Override
-    public List<MeasureResponseDto> getMeasureLatest() {
+    public List<MeasurementDto> getMeasureLatest() {
         return measurementsRepository.findMeasurementsLast().stream()
-                .map(MeasurementsMapper::toMeasureResponseDto)
+                .map(MeasurementsMapper::toMeasurementDto)
                 .toList();
     }
 }
