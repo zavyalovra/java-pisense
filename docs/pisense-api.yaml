@@ -1,0 +1,610 @@
+openapi: 3.0.3
+info:
+  title: piSense API
+  version: 1.0.0
+  description: API взаимодействия pisense-bridge и pisense-server.
+
+servers:
+  - url: http://localhost:8080
+    description: Локальный сервер
+
+tags:
+  - name: Bridges
+    description: Raspberry Pi bridge
+  - name: Buses
+    description: Шины bridge
+  - name: Measurement classes
+    description: Классы физических величин
+  - name: Locations
+    description: Пространственные точки размещения
+  - name: Sensors
+    description: Датчики
+  - name: Measurement batches
+    description: Пакеты измерений
+  - name: Measurements
+    description: Измерения
+
+paths:
+  /api/v1/bridges:
+    post:
+      tags: [Bridges]
+      summary: Зарегистрировать bridge
+      operationId: createBridge
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BridgeCreateRequest'
+      responses:
+        '201':
+          description: Bridge создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bridge'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    get:
+      tags: [Bridges]
+      summary: Получить список bridge
+      operationId: listBridges
+      security: [{BearerAuth: []}]
+      responses:
+        '200':
+          description: Список bridge
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Bridge'}
+
+  /api/v1/bridges/{bridgeId}:
+    get:
+      tags: [Bridges]
+      summary: Получить bridge
+      operationId: getBridge
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/BridgeId'}]
+      responses:
+        '200':
+          description: Bridge
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Bridge'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Bridges]
+      summary: Изменить bridge
+      operationId: updateBridge
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/BridgeId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BridgeUpdateRequest'
+      responses:
+        '200':
+          description: Bridge изменён
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Bridge'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /api/v1/bridges/{bridgeId}/discovery:
+    post:
+      tags: [Bridges]
+      summary: Передать результат сканирования шин
+      operationId: reportDiscovery
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/BridgeId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [buses]
+              properties:
+                buses:
+                  type: array
+                  items: {$ref: '#/components/schemas/BusDiscovery'}
+      responses:
+        '200':
+          description: Результат обнаружения обработан
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Sensor'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /api/v1/buses:
+    get:
+      tags: [Buses]
+      summary: Получить список шин
+      operationId: listBuses
+      security: [{BearerAuth: []}]
+      parameters:
+        - name: bridgeId
+          in: query
+          schema: {type: integer, format: int64, minimum: 1}
+      responses:
+        '200':
+          description: Список шин
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Bus'}
+
+  /api/v1/measurement-classes:
+    get:
+      tags: [Measurement classes]
+      summary: Получить классы физических величин
+      operationId: listMeasurementClasses
+      security: [{BearerAuth: []}]
+      responses:
+        '200':
+          description: Список классов
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/MeasurementClass'}
+    post:
+      tags: [Measurement classes]
+      summary: Создать класс физической величины
+      operationId: createMeasurementClass
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MeasurementClassCreateRequest'}
+      responses:
+        '201':
+          description: Класс создан
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeasurementClass'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+
+  /api/v1/locations:
+    get:
+      tags: [Locations]
+      summary: Получить список мест размещения
+      operationId: listLocations
+      security: [{BearerAuth: []}]
+      responses:
+        '200':
+          description: Список мест
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Location'}
+    post:
+      tags: [Locations]
+      summary: Создать место размещения
+      operationId: createLocation
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LocationCreateRequest'}
+      responses:
+        '201':
+          description: Место создано
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Location'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+
+  /api/v1/sensors:
+    get:
+      tags: [Sensors]
+      summary: Получить список датчиков
+      operationId: listSensors
+      security: [{BearerAuth: []}]
+      parameters:
+        - name: busId
+          in: query
+          schema: {type: integer, format: int64, minimum: 1}
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/SensorStatus'}
+      responses:
+        '200':
+          description: Список датчиков
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Sensor'}
+
+  /api/v1/sensors/{sensorId}:
+    get:
+      tags: [Sensors]
+      summary: Получить датчик
+      operationId: getSensor
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/SensorId'}]
+      responses:
+        '200':
+          description: Датчик
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Sensor'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Sensors]
+      summary: Изменить датчик
+      operationId: updateSensor
+      security: [{BearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/SensorId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SensorUpdateRequest'}
+      responses:
+        '200':
+          description: Датчик изменён
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Sensor'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /api/v1/measurement-batches:
+    post:
+      tags: [Measurement batches]
+      summary: Принять пакет измерений
+      description: Повторная отправка того же batchId не создаёт новый пакет.
+      operationId: createMeasurementBatch
+      security: [{BearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MeasurementBatchCreateRequest'}
+      responses:
+        '201':
+          description: Пакет принят
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeasurementBatch'}
+        '200':
+          description: Пакет уже был обработан
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeasurementBatch'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/UnprocessableEntity'}
+
+    get:
+      tags: [Measurement batches]
+      summary: Получить список пакетов
+      operationId: listMeasurementBatches
+      security: [{BearerAuth: []}]
+      parameters:
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/BatchStatus'}
+      responses:
+        '200':
+          description: Список пакетов
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/MeasurementBatch'}
+
+  /api/v1/measurement-batches/{batchId}:
+    get:
+      tags: [Measurement batches]
+      summary: Получить пакет измерений
+      operationId: getMeasurementBatch
+      security: [{BearerAuth: []}]
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Пакет измерений
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeasurementBatch'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /api/v1/measurements:
+    get:
+      tags: [Measurements]
+      summary: Получить измерения
+      operationId: listMeasurements
+      security: [{BearerAuth: []}]
+      parameters:
+        - name: sensorId
+          in: query
+          schema: {type: integer, format: int64, minimum: 1}
+        - name: measurementBatchId
+          in: query
+          schema: {type: integer, format: int64, minimum: 1}
+        - name: measuredFrom
+          in: query
+          schema: {type: string, format: date-time}
+        - name: measuredTo
+          in: query
+          schema: {type: string, format: date-time}
+      responses:
+        '200':
+          description: Список измерений
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Measurement'}
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    BridgeId:
+      name: bridgeId
+      in: path
+      required: true
+      schema: {type: integer, format: int64, minimum: 1}
+    SensorId:
+      name: sensorId
+      in: path
+      required: true
+      schema: {type: integer, format: int64, minimum: 1}
+
+  schemas:
+    SensorStatus:
+      type: string
+      enum: [DISCOVERED, ACTIVE, TEMPORARILY_UNAVAILABLE, DISABLED, RETIRED]
+    BatchStatus:
+      type: string
+      enum: [ACCEPTED, REJECTED]
+    BusType:
+      type: string
+      enum: [I2C, SPI, Onewire]
+    SensorType:
+      type: string
+      enum: [TEMPERATURE, PRESSURE, HUMIDITY, ILLUMINANCE]
+
+    Bridge:
+      type: object
+      additionalProperties: false
+      required: [id, externalId, active, createdAt]
+      properties:
+        id: {type: integer, format: int64, readOnly: true}
+        externalId: {type: string, maxLength: 100, example: bridge1}
+        name: {type: string, maxLength: 255, nullable: true}
+        active: {type: boolean, default: true}
+        createdAt: {type: string, format: date-time, readOnly: true}
+
+    BridgeCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [externalId]
+      properties:
+        externalId: {type: string, maxLength: 100, example: bridge1}
+        name: {type: string, maxLength: 255, nullable: true}
+        active: {type: boolean, default: true}
+
+    BridgeUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name: {type: string, maxLength: 255, nullable: true}
+        active: {type: boolean}
+
+    Bus:
+      type: object
+      additionalProperties: false
+      required: [id, bridgeId, externalId, busType]
+      properties:
+        id: {type: integer, format: int64, readOnly: true}
+        bridgeId: {type: integer, format: int64}
+        externalId: {type: string, maxLength: 100, example: i2c1}
+        busType: {$ref: '#/components/schemas/BusType'}
+
+    BusDiscovery:
+      type: object
+      additionalProperties: false
+      required: [externalId, busType, sensors]
+      properties:
+        externalId: {type: string, maxLength: 100, example: i2c1}
+        busType: {$ref: '#/components/schemas/BusType'}
+        sensors:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiscoveredSensor'
+
+    DiscoveredSensor:
+      type: object
+      additionalProperties: false
+      required: [address]
+      properties:
+        address: {type: string, maxLength: 100, example: 0x76}
+        model: {type: string, maxLength: 255, nullable: true}
+        serialNumber: {type: string, maxLength: 255, nullable: true}
+
+    MeasurementClass:
+      type: object
+      additionalProperties: false
+      required: [id, typeCode, unitOfMeasurement, description]
+      properties:
+        id: {type: integer, format: int64, readOnly: true}
+        typeCode: {$ref: '#/components/schemas/SensorType'}
+        unitOfMeasurement: {type: string, maxLength: 50, example: °C}
+        description: {type: string, maxLength: 255}
+
+    MeasurementClassCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [typeCode, unitOfMeasurement, description]
+      properties:
+        typeCode: {$ref: '#/components/schemas/SensorType'}
+        unitOfMeasurement: {type: string, maxLength: 50, example: °C}
+        description: {type: string, maxLength: 255}
+
+    Location:
+      type: object
+      additionalProperties: false
+      required: [id, name, description]
+      properties:
+        id: {type: integer, format: int64, readOnly: true}
+        name: {type: string, maxLength: 100}
+        description: {type: string, maxLength: 255}
+
+    LocationCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, description]
+      properties:
+        name: {type: string, maxLength: 100}
+        description: {type: string, maxLength: 255}
+
+    Sensor:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - bus
+        - address
+        - measurementClass
+        - status
+        - createdAt
+      properties:
+        id: {type: integer, format: int64, readOnly: true}
+        bus:
+          $ref: '#/components/schemas/Bus'
+        address: {type: string, maxLength: 100, example: 0x76}
+        model: {type: string, maxLength: 255, nullable: true}
+        serialNumber: {type: string, maxLength: 255, nullable: true}
+        measurementClass:
+          $ref: '#/components/schemas/MeasurementClass'
+        location:
+          allOf:
+            - $ref: '#/components/schemas/Location'
+          nullable: true
+        status: {$ref: '#/components/schemas/SensorStatus'}
+        createdAt: {type: string, format: date-time, readOnly: true}
+        lastSeenAt: {type: string, format: date-time, nullable: true, readOnly: true}
+
+    SensorUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        measurementClassId: {type: integer, format: int64}
+        locationId: {type: integer, format: int64, nullable: true}
+        status: {$ref: '#/components/schemas/SensorStatus'}
+
+    MeasurementBatch:
+      type: object
+      additionalProperties: false
+      required: [id, batchId, status, measuredAt, receivedAt]
+      properties:
+        id: {type: integer, format: int64, readOnly: true}
+        batchId: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/BatchStatus'}
+        measuredAt: {type: string, format: date-time, nullable: true}
+        receivedAt: {type: string, format: date-time, readOnly: true}
+        measurements:
+          type: array
+          readOnly: true
+          items: {$ref: '#/components/schemas/Measurement'}
+
+    MeasurementBatchCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [batchId, measuredAt, measurements]
+      properties:
+        batchId: {type: string, format: uuid}
+        status:
+          allOf:
+            - $ref: '#/components/schemas/BatchStatus'
+          default: ACCEPTED
+          description: Bridge обычно не задаёт статус; сервер устанавливает его сам.
+        measuredAt: {type: string, format: date-time, nullable: true}
+        measurements:
+          type: array
+          minItems: 1
+          items: {$ref: '#/components/schemas/MeasurementCreateRequest'}
+
+    Measurement:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - measurementId
+        - measurementBatchId
+        - sensorId
+        - measurementValue
+        - measuredAt
+        - receivedAt
+      properties:
+        id: {type: integer, format: int64, readOnly: true}
+        measurementId: {type: string, format: uuid}
+        measurementBatchId: {type: integer, format: int64}
+        sensorId: {type: integer, format: int64}
+        measurementValue: {type: number, format: double}
+        measuredAt: {type: string, format: date-time}
+        receivedAt: {type: string, format: date-time, readOnly: true}
+
+    MeasurementCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [measurementId, sensorId, measurementValue, measuredAt]
+      properties:
+        measurementId: {type: string, format: uuid}
+        sensorId: {type: integer, format: int64}
+        measurementValue: {type: number, format: double}
+        measuredAt: {type: string, format: date-time}
+
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: {type: string, example: VALIDATION_ERROR}
+        message: {type: string}
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    Conflict:
+      description: Нарушено уникальное ограничение
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    UnprocessableEntity:
+      description: Бизнес-валидация не пройдена
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
