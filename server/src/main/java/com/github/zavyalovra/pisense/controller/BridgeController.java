@@ -1,0 +1,9 @@
+package com.github.zavyalovra.pisense.controller;
+
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/v1/bridges")
+public class BridgeController {
+}

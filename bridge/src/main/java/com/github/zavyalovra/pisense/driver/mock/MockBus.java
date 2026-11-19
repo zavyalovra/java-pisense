@@ -2,10 +2,9 @@ package com.github.zavyalovra.pisense.driver.mock;
 
 import com.github.zavyalovra.pisense.common.model.BusType;
 import com.github.zavyalovra.pisense.common.model.SensorType;
-import com.github.zavyalovra.pisense.sensor.DetectedSensor;
-import com.github.zavyalovra.pisense.sensor.SensorAddress;
-import com.github.zavyalovra.pisense.sensor.SensorBus;
-import com.github.zavyalovra.pisense.sensor.SensorReader;
+import com.github.zavyalovra.pisense.model.DetectedSensor;
+import com.github.zavyalovra.pisense.model.SensorBus;
+import com.github.zavyalovra.pisense.model.Sensor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -17,15 +16,20 @@ import java.util.Optional;
 public class MockBus implements SensorBus {
 
     @Override
+    public BusType getType() {
+        return BusType.ONEWIRE;
+    }
+
+    @Override
     public List<DetectedSensor> discover() {
         return List.of(
-                new DetectedSensor(new SensorAddress(BusType.I2C, "0x76"), SensorType.PRESSURE, "BMP280 (mock)"),
-                new DetectedSensor(new SensorAddress(BusType.ONE_WIRE, "28-0000069C1E83"), SensorType.TEMPERATURE, "DS18B20 (mock)")
+                new DetectedSensor(this.getType(), SensorType.TEMPERATURE, "0x76", "DS18B20", "80-1234566"),
+                new DetectedSensor(this.getType(), SensorType.TEMPERATURE, "0x71", "DS18B20", "26-3546789")
         );
     }
 
     @Override
-    public Optional<SensorReader> open(DetectedSensor sensor) {
-        return Optional.of(new MockSensorReader(sensor.getType(), 22.0, 3.0));
+    public Optional<Sensor> open(DetectedSensor sensor) {
+        return Optional.of(new MockSensor(sensor.getSensorType(), 22.0, 3.0));
     }
 }
