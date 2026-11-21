@@ -152,7 +152,7 @@ Bridge опрашивает датчики через `Sensor.read()` после
 Результат одного опроса состоит из полей:
 
 - `measurementId` — UUID измерения (`measurements.uuid`);
-- `sensorId` — идентификатор датчика (`measurements.sensor_id`);
+- `channelId` — идентификатор канала (`measurements.channel_id`);
 - `measurementValue` — числовое значение (`measurements.measurement_value`);
 - `measuredAt` — время измерения (`measurements.measured_at`).
 
@@ -183,7 +183,7 @@ POST /api/v1/measurement-batches
   "measurements": [
     {
       "measurementId": "8c8f1e20-d5c3-4f5a-9e1d-f45c1b6b1234",
-      "sensorId": 42,
+      "channelId": 100,
       "measurementValue": 23.7,
       "measuredAt": "2026-11-18T12:37:54.530Z"
     }
@@ -197,7 +197,7 @@ Server выполняет следующие действия:
 
 1. валидирует JSON и обязательные поля;
 2. проверяет уникальность `batchId` (`batches.uuid`);
-3. проверяет существование датчиков (`measurements.sensor_id`);
+3. проверяет существование каналов (`measurements.channel_id`);
 4. проверяет значения и временные метки;
 5. создаёт запись в `batches`;
 6. создаёт связанные записи в `measurements` (`measurements.batch_id` указывает на `batches.id`);
@@ -361,7 +361,7 @@ sensors             1 ──── N measurements
 ```text
 ix_sensors_serial_number             ON sensors (address)
 ix_sensors_status                    ON sensors (status)
-ix_measurements_sensor_measured_at   ON measurements (sensor_id, measured_at)
+ix_measurements_channel_measured_at  ON measurements (channel_id, measured_at)
 ix_measurements_measured_at          ON measurements (measured_at)
 ix_measurements_batch                ON measurements (batch_id)
 ```
@@ -375,7 +375,7 @@ ix_measurements_batch                ON measurements (batch_id)
 | `batchId` | `Batch.uuid` | `batches.uuid` |
 | `measurementId` | `Measurement.uuid` | `measurements.uuid` |
 | `measurementBatchId` | `Measurement.batchId` | `measurements.batch_id` |
-| `sensorId` | `Measurement.sensorId` | `measurements.sensor_id` |
+| `channelId` | `Measurement.channelId` | `measurements.channel_id` |
 | `measurementValue` | `Measurement.measurementValue` | `measurements.measurement_value` |
 | `measuredAt` (batch) | `Batch.measuredAt` | `batches.measured_at` |
 | `measuredAt` (measurement) | `Measurement.measurementAt` | `measurements.measured_at` |
@@ -457,7 +457,8 @@ ix_measurements_batch                ON measurements (batch_id)
 
 Фильтры `GET /api/v1/measurements`:
 
-- `sensorId`;
+- `channelId` (`measurements.channel_id`);
+- `sensorId` — фильтр по датчику через `sensor_channels.sensor_id`;
 - `measurementBatchId` (`bigint`, это `measurements.batch_id`, не путать с `batchId`);
 - `measuredFrom`;
 - `measuredTo`.
@@ -468,7 +469,7 @@ Server проверяет:
 
 - наличие обязательных полей;
 - формат UUID для `batchId` и `measurementId`;
-- существование связанных `measurement_classes`, `locations`, `sensors`;
+- существование связанных `measurement_classes`, `locations`, `sensors`, `sensor_channels`;
 - допустимые значения ENUM;
 - корректность времени;
 - отсутствие дубликатов `batches.uuid` и `measurements.uuid`;

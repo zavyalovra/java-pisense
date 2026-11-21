@@ -1,6 +1,5 @@
 package com.github.zavyalovra.pisense.driver.mock;
 
-import com.github.zavyalovra.pisense.common.model.BusType;
 import com.github.zavyalovra.pisense.common.model.SensorType;
 import com.github.zavyalovra.pisense.model.DetectedSensor;
 import com.github.zavyalovra.pisense.model.SensorBus;
@@ -16,15 +15,15 @@ import java.util.Optional;
 public class MockBus implements SensorBus {
 
     @Override
-    public BusType getType() {
-        return BusType.ONEWIRE;
+    public String getName() {
+        return "ONEWIRE";
     }
 
     @Override
     public List<DetectedSensor> discover() {
         return List.of(
-                new DetectedSensor(this.getType(), SensorType.TEMPERATURE, "0x76", "DS18B20", "80-1234566"),
-                new DetectedSensor(this.getType(), SensorType.TEMPERATURE, "0x71", "DS18B20", "26-3546789")
+                new DetectedSensor(this.getName(), SensorType.TEMPERATURE, "0x76", "DS18B20", "80-1234566"),
+                new DetectedSensor(this.getName(), SensorType.TEMPERATURE, "0x71", "DS18B20", "26-3546789")
         );
     }
 

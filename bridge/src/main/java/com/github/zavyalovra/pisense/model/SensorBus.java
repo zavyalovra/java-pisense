@@ -1,7 +1,5 @@
 package com.github.zavyalovra.pisense.model;
 
-import com.github.zavyalovra.pisense.common.model.BusType;
-
 import java.util.List;
 import java.util.Optional;
 
@@ -11,7 +9,7 @@ import java.util.Optional;
  */
 public interface SensorBus {
 
-    BusType getType();
+    String getName();
 
     List<DetectedSensor> discover();              // кто физически есть на шине
 

@@ -8,13 +8,15 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class SensorMapper {
 
-    public static BridgeRequestDto toDto(DetectedSensor sensor) {
-        return new BridgeRequestDto(          // @AllArgsConstructor
-                sensor.getBusType(),
-                sensor.getSensorType(),
-                sensor.getAddress(),
-                sensor.getModel(),
-                sensor.getSerialNumber()
-        );
+    public static BridgeRequestDto toDto(DetectedSensor s) {
+        BridgeRequestDto dto = new BridgeRequestDto();
+
+        dto.setBusName(s.getBusName());
+        dto.setAddress(s.getAddress());
+        dto.setModel(s.getModel());
+        dto.setSerialNumber(s.getSerialNumber());
+        dto.setChannels();
+
+        return dto;
     }
 }

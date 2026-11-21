@@ -14,7 +14,7 @@
     <name>PiSense Server</name>
 
     <dependencies>
-        <!-- Общий контракт: SensorType, BusType, DTO обмена с bridge -->
+        <!-- Общий контракт: Types, DTO обмена с bridge -->
         <dependency>
             <groupId>com.github.zavyalovra</groupId>
             <artifactId>pisense-common</artifactId>

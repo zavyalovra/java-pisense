@@ -288,7 +288,7 @@ paths:
               measuredAt: "2026-11-18T12:37:54.530Z"
               measurements:
                 - measurementId: 8c8f1e20-d5c3-4f5a-9e1d-f45c1b6b1234
-                  sensorId: 42
+                  channelId: 100
                   measurementValue: 23.7
                   measuredAt: "2026-11-18T12:37:54.530Z"
       responses:
@@ -359,9 +359,16 @@ paths:
         Фильтры комбинируются по И.
       operationId: listMeasurements
       parameters:
+        - name: channelId
+          in: query
+          description: Идентификатор канала (measurements.channel_id)
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
         - name: sensorId
           in: query
-          description: Идентификатор датчика (measurements.sensor_id)
+          description: Идентификатор датчика; фильтрация через sensor_channels.sensor_id
           schema:
             type: integer
             format: int64
@@ -714,7 +721,7 @@ components:
         - id
         - measurementId
         - measurementBatchId
-        - sensorId
+        - channelId
         - measurementValue
         - measuredAt
         - receivedAt
@@ -732,10 +739,10 @@ components:
           type: integer
           format: int64
           description: measurements.batch_id, внутренний идентификатор пакета
-        sensorId:
+        channelId:
           type: integer
           format: int64
-          description: measurements.sensor_id
+          description: measurements.channel_id, ссылка на sensor_channels
         measurementValue:
           type: number
           format: double
@@ -754,17 +761,17 @@ components:
     MeasurementCreateRequest:
       type: object
       additionalProperties: false
-      required: [measurementId, sensorId, measurementValue, measuredAt]
+      required: [measurementId, channelId, measurementValue, measuredAt]
       properties:
         measurementId:
           type: string
           format: uuid
           description: measurements.uuid, генерирует bridge
-        sensorId:
+        channelId:
           type: integer
           format: int64
           minimum: 1
-          description: measurements.sensor_id
+          description: measurements.channel_id, ссылка на sensor_channels
         measurementValue:
           type: number
           format: double
