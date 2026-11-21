@@ -15,7 +15,6 @@ public class SensorMapper {
         dto.setAddress(s.getAddress());
         dto.setModel(s.getModel());
         dto.setSerialNumber(s.getSerialNumber());
-        dto.setChannels();
 
         return dto;
     }

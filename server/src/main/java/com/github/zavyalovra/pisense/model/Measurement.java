@@ -1,8 +1,6 @@
 package com.github.zavyalovra.pisense.model;
 
 import jakarta.persistence.*;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
@@ -15,11 +13,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @ToString
-public class Measurement {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class Measurement extends BaseEntity {
 
     @Column(nullable = false, unique = true)
     private UUID uuid;
@@ -39,7 +33,4 @@ public class Measurement {
 
     @Column(name = "measured_at", nullable = false)
     private Instant measuredAt;
-
-    @Column(name = "received_at", nullable = false)
-    private Instant receivedAt;
 }

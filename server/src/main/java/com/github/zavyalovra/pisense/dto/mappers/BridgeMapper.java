@@ -1,7 +1,7 @@
 package com.github.zavyalovra.pisense.dto.mappers;
 
 import com.github.zavyalovra.pisense.common.dto.BridgeRequestDto;
-import com.github.zavyalovra.pisense.common.model.SensorStatus;
+import com.github.zavyalovra.pisense.common.model.DeviceStatus;
 import com.github.zavyalovra.pisense.dto.BridgeResponseDto;
 import com.github.zavyalovra.pisense.model.Bridge;
 import com.github.zavyalovra.pisense.model.Sensor;
@@ -18,7 +18,7 @@ public class BridgeMapper {
     public static Bridge toBridge(BridgeRequestDto bridgeDto) {
         Bridge bridge = new Bridge();
 
-        bridge.setStatus(SensorStatus.DISCOVERED);
+        bridge.setStatus(DeviceStatus.DISCOVERED);
         bridge.setCreatedAt(Instant.now());
         bridge.setLastSeenAt(null);
 

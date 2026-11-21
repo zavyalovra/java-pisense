@@ -1,10 +1,11 @@
 package com.github.zavyalovra.pisense.model;
 
-import com.github.zavyalovra.pisense.common.model.SensorStatus;
+import com.github.zavyalovra.pisense.common.model.DeviceStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 
@@ -13,35 +14,20 @@ import java.time.Instant;
 @Getter
 @Setter
 @ToString
-public class Bridge {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class Bridge extends BaseEntity {
 
     /** pisense.bridge-id из application.properties */
-    @Column(name = "bridge_name", nullable = false, unique = true)
-    private String bridgeName;
+    @Column(name = "name", nullable = false, unique = true)
+    private String name;
 
-    @Column(nullable = false)
     @Enumerated(EnumType.STRING)
-    private SensorStatus status;
+    @Column(nullable = false)
+    private DeviceStatus status = DeviceStatus.DISCOVERED;
 
+    @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(nullable = true)
     private Instant lastSeenAt;
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof Bridge)) return false;
-        return id != null && id.equals(((Bridge) o).getId());
-    }
-
-    @Override
-    public int hashCode() {
-        return getClass().hashCode();
-    }
 }

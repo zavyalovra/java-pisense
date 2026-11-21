@@ -1,17 +1,19 @@
 package com.github.zavyalovra.pisense.model;
 
+import com.github.zavyalovra.pisense.common.model.BusType;
+
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Интерфейс шины: обнаружить устройства и открыть драйвер под найденное.
- * Реализации живут в пакете driver
- */
 public interface SensorBus {
 
-    String getName();
+    String getName();      // i2c1, i2c2, spi0, onewire (-> buses.name)
 
-    List<DetectedSensor> discover();              // кто физически есть на шине
+    BusType getType();     // -> buses.type
 
-    Optional<Sensor> open(DetectedSensor sensor); // создать драйвер под найденное устройство
+    /** Кто физически есть на шине. Не должен бросать исключений наружу. */
+    List<DetectedSensor> discover();
+
+    /** Драйвер под найденное устройство; empty, если модель не поддерживается. */
+    Optional<Sensor> open(DetectedSensor detected);
 }

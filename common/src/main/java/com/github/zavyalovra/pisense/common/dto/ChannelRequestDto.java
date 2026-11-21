@@ -1,6 +1,6 @@
 package com.github.zavyalovra.pisense.common.dto;
 
-import com.github.zavyalovra.pisense.common.model.SensorType;
+import com.github.zavyalovra.pisense.common.model.MetricType;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -12,5 +12,5 @@ import lombok.Setter;
 @AllArgsConstructor
 public class ChannelRequestDto {
     private String hardwareChannel;
-    private SensorType sensorType;
+    private MetricType metricType;
 }

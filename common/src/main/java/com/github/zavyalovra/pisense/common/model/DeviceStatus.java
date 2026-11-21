@@ -8,7 +8,7 @@ package com.github.zavyalovra.pisense.common.model;
  * DISABLED                   отключён администратором
  * RETIRED                    выведен из эксплуатации
  */
-public enum SensorStatus {
+public enum DeviceStatus {
     DISCOVERED,
     ACTIVE,
     TEMPORARILY_UNAVAILABLE,

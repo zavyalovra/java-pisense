@@ -1,13 +1,16 @@
 package com.github.zavyalovra.pisense.model;
 
-import com.github.zavyalovra.pisense.common.model.SensorType;
+import java.util.List;
 
 /**
  * Порт одного датчика: как в README — только чтение и тип.
  */
-public interface Sensor {
+public interface Sensor extends AutoCloseable {
 
-    SensorType getType();
+    List<ChannelInfo> channels();
 
-    double read();
+    List<Reading> read() throws SensorReadException;
+
+    @Override
+    default void close() { }
 }

@@ -1,136 +1,102 @@
 // ============================================================
-// PiSense — ER-диаграмма (DBML)
-// Источник: server/src/main/resources/schema.sql (schema v2, PostgreSQL 10+)
-// Значения enum-полей заданы CHECK-ограничениями и продублированы в note.
+// PiSense — ER-диаграмма v3 (DBML), PostgreSQL
+// Цель: простая схема под Spring Boot + Hibernate/JPA
+//   * enum'ы хранятся строками (@Enumerated(EnumType.STRING))
+//   * суррогатные ключи bigint IDENTITY (GenerationType.IDENTITY)
+//   * идемпотентность отправки — уникальный batches.uuid
 // ============================================================
 
 Project pisense {
   database_type: 'PostgreSQL'
-  Note: '''
-  PiSense schema v2. Скрипт идемпотентен (CREATE ... IF NOT EXISTS).
-  Датчик подключён к шине (sensors.bus_id), каналы датчика хранятся в sensor_channels.
-  '''
+  Note: 'bridge -> bus -> sensor -> sensor_channel; batch (от bridge) -> measurement (по каналу)'
 }
 
-// ============================================================
-// Справочники
-// ============================================================
-Table measurement_classes {
-  id                  bigint       [pk, increment]
-  type_code           varchar(100) [not null]
-  unit_of_measurement varchar(50)  [not null]
-  description         varchar(255) [not null]
-
-  Note: 'type_code: TEMPERATURE | PRESSURE | HUMIDITY | ILLUMINANCE'
-}
-
-Table locations {
-  id          bigint       [pk, increment]
-  name        varchar(100) [not null]
-  description varchar(255) [not null]
-}
-
-// ============================================================
-// Мосты и шины
-// ============================================================
+// ------------------------------------------------------------
+// Мост (Raspberry Pi) и его шины
+// ------------------------------------------------------------
 Table bridges {
   id           bigint       [pk, increment]
-  bridge_name  varchar(100) [not null, unique]
-  status       varchar(100) [not null, default: `'DISCOVERED'`]
-  created_at   timestamptz  [not null, default: `CURRENT_TIMESTAMP`]
-  last_seen_at timestamptz
-
-  Note: 'status: DISCOVERED | ACTIVE | TEMPORARILY_UNAVAILABLE | DISABLED | RETIRED. bridge_name UNIQUE NOT NULL.'
+  name         varchar(100) [not null, unique, note: 'уникальное имя моста, приходит в batch']
+  status       varchar(30)  [not null, default: 'DISCOVERED', note: 'DISCOVERED | ACTIVE | DISABLED']
+  created_at   timestamptz  [not null, default: `now()`]
+  last_seen_at timestamptz  [note: 'время последнего принятого batch']
 }
 
 Table buses {
-  id        bigint       [pk, increment]
-  bus_name  varchar(100) [not null]
-  bridge_id bigint       [not null]
-
-  Note: 'bus_name: I2C | SPI | ONEWIRE. Шина уникальна в пределах моста: (bridge_id, bus_name).'
+  id        bigint      [pk, increment]
+  bridge_id bigint      [not null]
+  name      varchar(50) [not null, note: 'i2c1, i2c2, spi0, onewire ...']
+  type      varchar(20) [not null, note: 'I2C | SPI | ONEWIRE | ...']
 
   indexes {
-    (bridge_id, bus_name) [unique, name: 'ux_buses_bridge_bus_name']
+    (bridge_id, name) [unique, name: 'ux_buses_bridge_name']
   }
 }
 
-// ============================================================
-// Датчики и каналы
-// ============================================================
+// ------------------------------------------------------------
+// Датчики и их измерительные каналы
+// ------------------------------------------------------------
 Table sensors {
-  id                   bigint       [pk, increment]
-  bus_id               bigint       [not null, note: 'шина, к которой подключён датчик']
-  address              varchar(100) [not null, note: 'адрес на шине']
-  model                varchar(255)
-  serial_number        varchar(255)
-  location_id          bigint
-  status               varchar(100) [not null, default: `'DISCOVERED'`]
-  created_at           timestamptz  [not null, default: `CURRENT_TIMESTAMP`]
-  last_seen_at         timestamptz
-
-  Note: 'status: DISCOVERED | ACTIVE | TEMPORARILY_UNAVAILABLE | DISABLED | RETIRED. Датчик уникален в пределах шины: (bus_id, address).'
+  id            bigint       [pk, increment]
+  bus_id        bigint       [not null]
+  sensor_code   varchar(100) [not null, note: 'TelemetryDto.sensorId, например bme280-0x76']
+  address       varchar(50)  [note: 'адрес на шине (0x76, 28-00000abc...)']
+  model         varchar(100)
+  serial_number varchar(100)
+  location      varchar(100) [note: 'произвольное место установки']
+  created_at    timestamptz  [not null, default: `now()`]
 
   indexes {
-    (bus_id, address) [unique, name: 'ux_sensors_bus_address']
-    address [name: 'ix_sensors_address']
-    status  [name: 'ix_sensors_status']
+    (bus_id, sensor_code) [unique, name: 'ux_sensors_bus_sensor_code']
   }
 }
 
 Table sensor_channels {
-  id                   bigint      [pk, increment]
-  sensor_id            bigint      [not null]
-  hardware_channel     varchar(50) [not null, note: 'идентификатор канала: temperature, pressure, humidity']
-  sensor_type          varchar(50) [not null]
-  measurement_class_id bigint
-
-  Note: 'sensor_type: TEMPERATURE | PRESSURE | HUMIDITY | ILLUMINANCE. Канал уникален в пределах датчика: (sensor_id, hardware_channel).'
+  id          bigint       [pk, increment]
+  sensor_id   bigint       [not null, note: 'FK на sensors.id']
+  name        varchar(50)  [not null, note: 'channel-name: temperature, pressure, humidity']
+  metric_type varchar(30)  [not null, note: 'MetricType: TEMPERATURE | PRESSURE | HUMIDITY | ILLUMINANCE ...']
+  unit        varchar(20)  [not null, note: 'строка UCUM: Cel, degF, hPa, %']
 
   indexes {
-    (sensor_id, hardware_channel) [unique, name: 'ux_sensor_channels_sensor_hardware_channel']
+    (sensor_id, name) [unique, name: 'ux_sensor_channels_sensor_name']
   }
 }
 
-// ============================================================
-// Измерения
-// ============================================================
+// ------------------------------------------------------------
+// Посылки и измерения
+// ------------------------------------------------------------
 Table batches {
-  id          bigint       [pk, increment]
-  uuid        uuid         [not null, unique]
-  status      varchar(100) [not null, default: `'ACCEPTED'`]
-  measured_at timestamptz
-  received_at timestamptz  [not null, default: `CURRENT_TIMESTAMP`]
+  id           bigint      [pk, increment]
+  uuid         uuid        [not null, unique, note: 'генерируется на bridge; повторная отправка с тем же uuid игнорируется']
+  bridge_id   bigint      [not null]
+  collected_at timestamptz [not null, note: 'время опроса на bridge']
+  received_at timestamptz [not null, default: `now()`, note: 'время приёма сервером']
 
-  Note: 'status: ACCEPTED | REJECTED'
+  indexes {
+    (bridge_id, collected_at) [name: 'ix_batches_bridge_collected_at']
+  }
 }
 
 Table measurements {
-  id                bigint           [pk, increment]
-  uuid              uuid             [not null, unique]
-  batch_id          bigint           [not null]
-  channel_id        bigint           [not null]
-  measurement_value double           [not null]
-  measured_at       timestamptz      [not null]
-  received_at       timestamptz      [not null, default: `CURRENT_TIMESTAMP`]
+  id          bigint      [pk, increment]
+  batch_id    bigint      [not null]
+  channel_id  bigint      [not null]
+  value       float8      [not null]
+  measured_at timestamptz [not null]
 
   indexes {
+    (batch_id, channel_id)    [unique, name: 'ux_measurements_batch_channel', note: 'один канал — одно значение в batch']
     (channel_id, measured_at) [name: 'ix_measurements_channel_measured_at']
-    measured_at              [name: 'ix_measurements_measured_at']
-    batch_id                 [name: 'ix_measurements_batch']
   }
 }
 
-// ============================================================
+// ------------------------------------------------------------
 // Связи
-// ============================================================
-Ref: buses.bridge_id > bridges.id [delete: cascade]
-
-Ref: sensors.bus_id > buses.id                                  [delete: cascade]
-Ref: sensors.location_id > locations.id                         [delete: restrict]
-
-Ref: sensor_channels.sensor_id > sensors.id                     [delete: cascade]
-Ref: sensor_channels.measurement_class_id > measurement_classes.id [delete: restrict]
-
-Ref: measurements.batch_id > batches.id                         [delete: cascade]
-Ref: measurements.channel_id > sensor_channels.id               [delete: restrict]
+// ------------------------------------------------------------
+Ref: buses.bridge_id            > bridges.id          [delete: cascade]
+Ref: sensors.bus_id             > buses.id            [delete: cascade]
+Ref: sensor_channels.sensor_id  > sensors.id          [delete: cascade]
+Ref: batches.bridge_id          > bridges.id          [delete: restrict]
+Ref: measurements.batch_id      > batches.id          [delete: cascade]
+Ref: measurements.channel_id    > sensor_channels.id  [delete: restrict]

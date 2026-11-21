@@ -7,6 +7,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -16,21 +17,20 @@ import java.util.UUID;
 @Getter
 @Setter
 @ToString
-public class Batch {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class Batch extends BaseEntity {
 
     @Column(nullable = false, unique = true)
     private UUID uuid;
 
-    @Enumerated(EnumType.STRING)
-    private BatchStatus status;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "bridge_id", nullable = false)
+    @ToString.Exclude
+    private Bridge bridge;
 
-    @Column(name = "measured_at", nullable = false)
-    private Instant measuredAt;
+    @Column(name = "collected_at", nullable = false)
+    private Instant collectedAt;
 
-    @Column(name = "received_at", nullable = false)
+    @CreationTimestamp
+    @Column(name = "received_at", nullable = false, updatable = false)
     private Instant receivedAt;
 }

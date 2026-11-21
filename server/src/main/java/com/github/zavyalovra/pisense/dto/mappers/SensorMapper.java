@@ -2,7 +2,7 @@ package com.github.zavyalovra.pisense.dto.mappers;
 
 import com.github.zavyalovra.pisense.common.dto.BridgeRequestDto;
 import com.github.zavyalovra.pisense.common.dto.ChannelRequestDto;
-import com.github.zavyalovra.pisense.common.model.SensorStatus;
+import com.github.zavyalovra.pisense.common.model.DeviceStatus;
 import com.github.zavyalovra.pisense.dto.*;
 import com.github.zavyalovra.pisense.model.*;
 import lombok.AccessLevel;
@@ -21,7 +21,7 @@ public final class SensorMapper {
         sensor.setAddress(dto.getAddress());
         sensor.setModel(dto.getModel());
         sensor.setSerialNumber(dto.getSerialNumber());
-        sensor.setStatus(SensorStatus.DISCOVERED);
+        sensor.setStatus(DeviceStatus.DISCOVERED);
         sensor.setCreatedAt(Instant.now());
 
         return sensor;
@@ -32,7 +32,7 @@ public final class SensorMapper {
 
         channel.setSensor(sensor);
         channel.setHardwareChannel(dto.getHardwareChannel());
-        channel.setSensorType(dto.getSensorType());
+        channel.setSensorType(dto.getMetricType());
         channel.setMeasurementClass(measurementClass);
 
         return channel;

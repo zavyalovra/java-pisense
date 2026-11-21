@@ -3,7 +3,7 @@ package com.github.zavyalovra.pisense.common.model;
 /**
  * Тип датчика.
  */
-public enum SensorType {
+public enum MetricType {
     TEMPERATURE,
     PRESSURE,
     HUMIDITY,
