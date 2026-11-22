@@ -12,9 +12,5 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class BridgeRequestDto {
-    private String busName;
-    private String address;
-    private String model;
-    private String serialNumber;
-    private List<ChannelRequestDto> channels;
+    private List<BusRequestDto> buses;
 }

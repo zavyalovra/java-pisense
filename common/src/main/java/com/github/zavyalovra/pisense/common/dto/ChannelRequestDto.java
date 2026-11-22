@@ -11,6 +11,9 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ChannelRequestDto {
-    private String hardwareChannel;
+    private String name;
+
     private MetricType metricType;
+
+    private String unit;
 }

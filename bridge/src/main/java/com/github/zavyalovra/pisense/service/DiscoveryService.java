@@ -1,39 +1,34 @@
 package com.github.zavyalovra.pisense.service;
 
-import com.github.zavyalovra.pisense.client.Client;
 import com.github.zavyalovra.pisense.common.dto.BridgeRequestDto;
-import com.github.zavyalovra.pisense.model.SensorBus;
-import com.github.zavyalovra.pisense.service.mappers.SensorMapper;
+import com.github.zavyalovra.pisense.service.discovery.DiscoveryScanner;
+import com.github.zavyalovra.pisense.service.mappers.DiscoveryMapper;
+import com.github.zavyalovra.pisense.service.port.DiscoverySender;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-
 @Service
+@RequiredArgsConstructor
 @Slf4j
 public class DiscoveryService {
-    private final List<SensorBus> buses;
-    private final Client client;
-
-    @Autowired
-    public DiscoveryService(List<SensorBus> buses, Client client) {
-        this.buses = buses;
-        this.client = client;
-    }
+    private final DiscoveryScanner scanner;
+    private final DiscoverySender sender;
 
     public void reportDiscovery() {
-        List<BridgeRequestDto> body = buses.stream()
-                .flatMap(bus -> bus.discover().stream())
-                .map(SensorMapper::toDto)
-                .toList();
+        BridgeRequestDto body = DiscoveryMapper.toDto(scanner.scan());
 
-        log.debug("discovery: найдено датчиков {}", body.size());
-        if (body.isEmpty()) {                 // нечего отправлять
+        if (body.getBuses().isEmpty()) {
             log.debug("discovery: отправлять нечего");
             return;
         }
-        client.sendDiscovery(body);
-        log.info("discovery отправлен: {}", body);
+
+        sender.sendDiscovery(body);
+
+        int sensors = body.getBuses().stream()
+                .mapToInt(bus -> bus.getSensors().size())
+                .sum();
+
+        log.info("discovery отправлен: шин {}, датчиков {}", body.getBuses().size(), sensors);
     }
 }
