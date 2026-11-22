@@ -18,7 +18,7 @@ public class Client {
                   @Value("${pisense-server.url}") String baseUrl,
                   @Value("${pisense-server.connect-timeout-ms}") int connectMs,
                   @Value("${pisense-server.read-timeout-ms}") int readMs,
-                  @Value("${pisense.bridge-id}") long bridgeId) {
+                  @Value("${pisense.bridge-name}") long bridgeId) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(connectMs);
         factory.setReadTimeout(readMs);
@@ -28,7 +28,7 @@ public class Client {
 
     public void sendDiscovery(List<BridgeRequestDto> request) {
         restClient.post()
-                .uri("/api/v1/bridges/{bridgeId}/discovery", bridgeId)
+                .uri("/api/v1/bridges/{bridgeName}/discovery", bridgeId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(request)
                 .retrieve()

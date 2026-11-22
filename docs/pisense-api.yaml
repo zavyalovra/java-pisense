@@ -1,21 +1,29 @@
 openapi: 3.0.3
 info:
   title: piSense API
-  version: 2.0.0
+  version: 3.0.0
   description: |
     Контракт обмена между `pisense-bridge` и `pisense-server`.
 
-    Схема соответствует версии базы данных v2 (`server/src/main/resources/schema.sql`):
-    таблицы `measurement_classes`, `locations`, `sensors`, `batches`, `measurements`.
-    Таблиц `bridges` и `buses` в схеме нет, поэтому отдельных ресурсов для них тоже нет.
+    Схема соответствует базе данных v3 (`docs/pisense-er.dbml`, `server/src/main/resources/schema.sql`):
+    `bridges → buses → sensors → sensor_channels` (топология) и
+    `bridges → batches → measurements` (поток данных).
 
-    Идентификация датчика выполняется по паре «шина + адрес»: `busType` + `address`.
-    `bridgeId` приходит в пути запроса обнаружения и берётся bridge из настройки
-    `pisense.bridge-id`.
+    **Как работает обмен**
+    1. При старте (и периодически) bridge отправляет `discovery` — описание своей топологии:
+       шины, датчики и их каналы. Сервер создаёт или обновляет записи.
+    2. По расписанию bridge опрашивает все шины и датчики, формирует `batch` со всеми
+       измерениями и отправляет его на сервер.
+    3. Измерение указывает канал естественным ключом: `sensorCode` + `channelName`
+       (в пределах моста). Сервер сам находит `sensor_channels.id`.
 
-    Аутентификация не реализована: заголовок `Authorization` не требуется.
+    **Идемпотентность.** `batchId` — это `batches.uuid`, его генерирует bridge до отправки.
+    Первая отправка возвращает `201`, повторная с тем же `batchId` — `200` без дублирования данных.
 
-    Ошибки возвращаются в едином формате `ApiError` (`code`, `message`).
+    **Идентификация моста.** В пути используется уникальное имя моста `bridgeName`
+    (`bridges.name`).
+
+    Аутентификация не реализована. Ошибки возвращаются в едином формате `ApiError`.
 
 servers:
   - url: http://localhost:9090
@@ -24,104 +32,273 @@ servers:
     description: pisense-server внутри docker-compose
 
 tags:
+  - name: Bridges
+    description: Мосты и их топология
   - name: Discovery
-    description: Результат сканирования шин, который bridge отправляет на server
+    description: Описание топологии, которое bridge отправляет на сервер
+  - name: Batches
+    description: Приём и просмотр посылок с измерениями
   - name: Sensors
-    description: Датчики и их бизнес-конфигурация
-  - name: Measurement classes
-    description: Справочник физических величин
-  - name: Locations
-    description: Места размещения датчиков
-  - name: Measurement batches
-    description: Пакеты измерений
-  - name: Measurements
-    description: История измерений
+    description: Датчики и их конфигурация
+  - name: Channels
+    description: Измерительные каналы и история значений
   - name: Actuator
     description: Служебные эндпоинты Spring Boot Actuator
 
 paths:
-  /api/v1/bridges/{bridgeId}/discovery:
-    post:
-      tags: [Discovery]
-      summary: Передать результат сканирования шин
-      description: |
-        Вызывается из `bridge/client/Client#sendDiscovery`.
-        Тело запроса — `DiscoverRequestDto` (`{"sensors": [...]}`), элементы — `DetectedSensorDto`.
-
-        Server выполняет идемпотентную синхронизацию: находит или создаёт датчик по паре
-        `busType` + `address`, обновляет `model`, `serialNumber`, `lastSeenAt`.
-        Датчики, которые не пришли в запросе, не удаляются.
-        Новый датчик получает статус `DISCOVERED`.
-        Ответ bridge не читает (`toBodilessEntity`).
-      operationId: reportDiscovery
+  /api/v1/bridges:
+    get:
+      tags: [Bridges]
+      summary: Список мостов
+      operationId: listBridges
       parameters:
-        - $ref: '#/components/parameters/BridgeId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DiscoverRequest'
-            example:
-              sensors:
-                - busType: ONEWIRE
-                  sensorType: TEMPERATURE
-                  address: "0x76"
-                  model: DS18B20
-                  serialNumber: 80-1234566
-                - busType: ONEWIRE
-                  sensorType: TEMPERATURE
-                  address: "0x71"
-                  model: DS18B20
-                  serialNumber: 26-3546789
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/BridgeStatus'
       responses:
         '200':
-          description: Результат обнаружения обработан
+          description: Список мостов
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Sensor'
+                  $ref: '#/components/schemas/Bridge'
         '400':
           $ref: '#/components/responses/BadRequest'
+
+  /api/v1/bridges/{bridgeName}:
+    get:
+      tags: [Bridges]
+      summary: Получить мост с топологией
+      description: Возвращает мост и вложенные шины, датчики и каналы.
+      operationId: getBridge
+      parameters:
+        - $ref: '#/components/parameters/BridgeName'
+      responses:
+        '200':
+          description: Мост с топологией
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgeTopology'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Bridges]
+      summary: Изменить статус моста
+      description: Мост в статусе `DISABLED` не принимает batch (ответ `403`).
+      operationId: updateBridge
+      parameters:
+        - $ref: '#/components/parameters/BridgeName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BridgeUpdateRequest'
+            example:
+              status: ACTIVE
+      responses:
+        '200':
+          description: Мост изменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bridge'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/bridges/{bridgeName}/discovery:
+    post:
+      tags: [Discovery]
+      summary: Передать топологию моста
+      description: |
+        Идемпотентная синхронизация. Сервер находит или создаёт:
+        мост по `bridgeName` (новый получает статус `DISCOVERED`),
+        шину по `(мост, name)`, датчик по `(шина, sensorCode)`, канал по `(датчик, name)`.
+
+        * Для существующих датчиков обновляются `address`, `model`, `serialNumber`.
+        * `metricType` и `unit` существующего канала не меняются: при расхождении — `409`.
+        * Шины, датчики и каналы, которых нет в запросе, **не удаляются**.
+      operationId: reportDiscovery
+      parameters:
+        - $ref: '#/components/parameters/BridgeName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiscoveryRequest'
+            example:
+              buses:
+                - name: i2c1
+                  sensors:
+                    - sensorCode: i2c1-0x76
+                      address: "0x76"
+                      model: BME280
+                      serialNumber: "80-1234566"
+                      channels:
+                        - name: temperature
+                          metricType: TEMPERATURE
+                          unit: Cel
+                        - name: pressure
+                          metricType: PRESSURE
+                          unit: hPa
+                        - name: humidity
+                          metricType: HUMIDITY
+                          unit: "%"
+                - name: onewire
+                  sensors:
+                    - sensorCode: onewire-28-00000abc
+                      address: 28-00000abc
+                      model: DS18B20
+                      channels:
+                        - name: temperature
+                          metricType: TEMPERATURE
+                          unit: Cel
+      responses:
+        '200':
+          description: Топология обработана, возвращается актуальное состояние моста
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgeTopology'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/bridges/{bridgeName}/batches:
+    post:
+      tags: [Batches]
+      summary: Принять batch с измерениями
+      description: |
+        Batch и его измерения сохраняются одной транзакцией: либо всё, либо ничего.
+
+        **Идемпотентность.** Повторная отправка известного `batchId` ничего не пишет:
+        первая обработка → `201` (`status: ACCEPTED`), повторная → `200` (`status: REJECTED`).
+        Гонку двух одинаковых запросов разрешает уникальный индекс `batches.uuid`.
+
+        **Правила.**
+        * Мост должен существовать (сначала `discovery`), иначе `404`; в статусе `DISABLED` → `403`.
+        * Каждое измерение ссылается на канал парой `sensorCode` + `channelName`.
+          Неизвестный канал → `422`, весь batch отклоняется.
+        * `metricType` и `unit` в измерении проверяются на совпадение с каналом, при расхождении → `422`.
+        * Один канал может встретиться в batch не более одного раза (`ux_measurements_batch_channel`).
+        * Успешный приём обновляет `bridges.last_seen_at`.
+      operationId: createBatch
+      parameters:
+        - $ref: '#/components/parameters/BridgeName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchCreateRequest'
+            example:
+              batchId: 550e8400-e29b-41d4-a716-446655440000
+              collectedAt: "2026-11-22T12:37:54.530Z"
+              measurements:
+                - sensorCode: i2c1-0x76
+                  channelName: temperature
+                  metricType: TEMPERATURE
+                  unit: Cel
+                  measurementValue: 23.7
+                  measuredAt: "2026-11-22T12:37:54.100Z"
+                - sensorCode: i2c1-0x76
+                  channelName: pressure
+                  metricType: PRESSURE
+                  unit: hPa
+                  measurementValue: 1013.2
+                  measuredAt: "2026-11-22T12:37:54.100Z"
+      responses:
+        '201':
+          description: Batch принят впервые, данные записаны
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchReceipt'
+        '200':
+          description: Batch с таким batchId уже принят ранее, повторная отправка проигнорирована
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchReceipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    get:
+      tags: [Batches]
+      summary: Список batch моста
+      description: Без измерений. Сортировка по `collectedAt` по убыванию.
+      operationId: listBridgeBatches
+      parameters:
+        - $ref: '#/components/parameters/BridgeName'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Страница batch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/batches/{batchId}:
+    get:
+      tags: [Batches]
+      summary: Получить batch по UUID
+      description: Возвращает batch вместе с измерениями.
+      operationId: getBatch
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+      responses:
+        '200':
+          description: Batch с измерениями
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchDetails'
         '404':
           $ref: '#/components/responses/NotFound'
 
   /api/v1/sensors:
     get:
       tags: [Sensors]
-      summary: Получить список датчиков
+      summary: Список датчиков
+      description: Фильтры комбинируются по И.
       operationId: listSensors
       parameters:
-        - name: status
+        - name: bridgeName
           in: query
-          description: Статус датчика
-          schema:
-            $ref: '#/components/schemas/SensorStatus'
-        - name: measurementClassId
-          in: query
-          description: Идентификатор класса величины
-          schema:
-            type: integer
-            format: int64
-            minimum: 1
-        - name: locationId
-          in: query
-          description: Идентификатор места размещения
-          schema:
-            type: integer
-            format: int64
-            minimum: 1
-        - name: address
-          in: query
-          description: Адрес на шине, например 0x76
+          description: Имя моста
           schema:
             type: string
             maxLength: 100
+        - name: busName
+          in: query
+          description: Имя шины (имеет смысл вместе с bridgeName)
+          schema:
+            type: string
+            maxLength: 50
       responses:
         '200':
-          description: Список датчиков
+          description: Список датчиков с каналами
           content:
             application/json:
               schema:
@@ -140,21 +317,19 @@ paths:
         - $ref: '#/components/parameters/SensorId'
       responses:
         '200':
-          description: Датчик с вложенными measurementClass и location
+          description: Датчик с каналами
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Sensor'
         '404':
           $ref: '#/components/responses/NotFound'
-
     patch:
       tags: [Sensors]
-      summary: Изменить бизнес-конфигурацию датчика
+      summary: Изменить конфигурацию датчика
       description: |
-        Меняет класс величины, место размещения и статус.
-        Технические поля `address`, `model`, `serialNumber` приходят только из discovery
-        и через этот метод не изменяются.
+        Меняется только `location`.
+        Технические поля (`sensorCode`, `address`, `model`, `serialNumber`) приходят из discovery.
       operationId: updateSensor
       parameters:
         - $ref: '#/components/parameters/SensorId'
@@ -165,9 +340,7 @@ paths:
             schema:
               $ref: '#/components/schemas/SensorUpdateRequest'
             example:
-              measurementClassId: 1
-              locationId: 2
-              status: ACTIVE
+              location: Серверная, стойка 3
       responses:
         '200':
           description: Датчик изменён
@@ -179,230 +352,51 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
 
-  /api/v1/measurement-classes:
+  /api/v1/channels/{channelId}:
     get:
-      tags: [Measurement classes]
-      summary: Получить список классов физических величин
-      operationId: listMeasurementClasses
-      responses:
-        '200':
-          description: Список классов
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/MeasurementClass'
-
-    post:
-      tags: [Measurement classes]
-      summary: Создать класс физической величины
-      operationId: createMeasurementClass
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/MeasurementClassCreateRequest'
-            example:
-              typeCode: TEMPERATURE
-              unitOfMeasurement: "°C"
-              description: Температура
-      responses:
-        '201':
-          description: Класс создан
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MeasurementClass'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-
-  /api/v1/locations:
-    get:
-      tags: [Locations]
-      summary: Получить список мест размещения
-      operationId: listLocations
-      responses:
-        '200':
-          description: Список мест размещения
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Location'
-
-    post:
-      tags: [Locations]
-      summary: Создать место размещения
-      operationId: createLocation
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LocationCreateRequest'
-            example:
-              name: Серверная
-              description: Стойка 3
-      responses:
-        '201':
-          description: Место создано
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Location'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-
-  /api/v1/measurement-batches:
-    post:
-      tags: [Measurement batches]
-      summary: Принять пакет измерений
-      description: |
-        Пакет и его измерения сохраняются одной транзакцией: либо всё, либо ничего.
-
-        Идемпотентность. `batchId` — это `batches.uuid`, `measurementId` — `measurements.uuid`.
-        UUID генерирует bridge, в схеме у колонок нет `DEFAULT`.
-        Повторная отправка уже известного `batchId` не создаёт дубликатов:
-        первая обработка возвращает `201`, повторная — `200`.
-        Защита от гонки обеспечивается уникальными ограничениями
-        `ux_batches_uuid` и `ux_measurements_uuid`, а не проверкой в Java.
-      operationId: createMeasurementBatch
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/MeasurementBatchCreateRequest'
-            example:
-              batchId: 550e8400-e29b-41d4-a716-446655440000
-              measuredAt: "2026-11-18T12:37:54.530Z"
-              measurements:
-                - measurementId: 8c8f1e20-d5c3-4f5a-9e1d-f45c1b6b1234
-                  channelId: 100
-                  measurementValue: 23.7
-                  measuredAt: "2026-11-18T12:37:54.530Z"
-      responses:
-        '201':
-          description: Пакет принят впервые, записи созданы
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MeasurementBatch'
-        '200':
-          description: Пакет уже был принят ранее, повторная обработка
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MeasurementBatch'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-
-    get:
-      tags: [Measurement batches]
-      summary: Получить список пакетов
-      operationId: listMeasurementBatches
+      tags: [Channels]
+      summary: Получить канал
+      operationId: getChannel
       parameters:
-        - name: status
-          in: query
-          description: Статус пакета
-          schema:
-            $ref: '#/components/schemas/BatchStatus'
+        - $ref: '#/components/parameters/ChannelId'
       responses:
         '200':
-          description: Список пакетов
+          description: Канал
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/MeasurementBatch'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-
-  /api/v1/measurement-batches/{batchId}:
-    get:
-      tags: [Measurement batches]
-      summary: Получить пакет измерений
-      operationId: getMeasurementBatch
-      parameters:
-        - $ref: '#/components/parameters/BatchId'
-      responses:
-        '200':
-          description: Пакет измерений с измерениями
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MeasurementBatch'
+                $ref: '#/components/schemas/SensorChannel'
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /api/v1/measurements:
+  /api/v1/channels/{channelId}/measurements:
     get:
-      tags: [Measurements]
-      summary: Получить историю измерений
+      tags: [Channels]
+      summary: История значений канала за период
       description: |
-        История не изменяется после успешной записи пакета.
-        Фильтры комбинируются по И.
-      operationId: listMeasurements
+        Основной запрос на чтение: «история значений канала за период».
+        Использует индекс `ix_measurements_channel_measured_at`.
+        Границы включительно, сортировка по `measuredAt` по возрастанию.
+        Если границы не заданы, возвращаются последние значения (по умолчанию — за 24 часа).
+      operationId: listChannelMeasurements
       parameters:
-        - name: channelId
-          in: query
-          description: Идентификатор канала (measurements.channel_id)
-          schema:
-            type: integer
-            format: int64
-            minimum: 1
-        - name: sensorId
-          in: query
-          description: Идентификатор датчика; фильтрация через sensor_channels.sensor_id
-          schema:
-            type: integer
-            format: int64
-            minimum: 1
-        - name: measurementBatchId
-          in: query
-          description: Внутренний идентификатор пакета (measurements.batch_id, bigint), не путать с batchId
-          schema:
-            type: integer
-            format: int64
-            minimum: 1
-        - name: measuredFrom
-          in: query
-          description: Нижняя граница measured_at включительно
-          schema:
-            type: string
-            format: date-time
-        - name: measuredTo
-          in: query
-          description: Верхняя граница measured_at включительно
-          schema:
-            type: string
-            format: date-time
+        - $ref: '#/components/parameters/ChannelId'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
       responses:
         '200':
-          description: Список измерений
+          description: Страница измерений
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Measurement'
+                $ref: '#/components/schemas/MeasurementPage'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /actuator/health:
     get:
@@ -425,20 +419,30 @@ paths:
 
 components:
   parameters:
-    BridgeId:
-      name: bridgeId
+    BridgeName:
+      name: bridgeName
       in: path
       required: true
-      description: Идентификатор bridge из настройки pisense.bridge-id
+      description: Уникальное имя моста, bridges.name
       schema:
-        type: integer
-        format: int64
-        minimum: 1
-        example: 1
+        type: string
+        minLength: 1
+        maxLength: 100
+        example: pi-kitchen
     SensorId:
       name: sensorId
       in: path
       required: true
+      description: sensors.id
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    ChannelId:
+      name: channelId
+      in: path
+      required: true
+      description: sensor_channels.id
       schema:
         type: integer
         format: int64
@@ -447,331 +451,316 @@ components:
       name: batchId
       in: path
       required: true
-      description: Внешний UUID пакета, соответствует batches.uuid
+      description: Внешний UUID batch, batches.uuid
       schema:
         type: string
         format: uuid
+    From:
+      name: from
+      in: query
+      description: Нижняя граница времени включительно (ISO 8601, UTC)
+      schema:
+        type: string
+        format: date-time
+    To:
+      name: to
+      in: query
+      description: Верхняя граница времени включительно (ISO 8601, UTC)
+      schema:
+        type: string
+        format: date-time
+    Page:
+      name: page
+      in: query
+      description: Номер страницы, с нуля
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Size:
+      name: size
+      in: query
+      description: Размер страницы
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
 
   schemas:
-    BusType:
+    MetricType:
       type: string
-      description: Тип шины, соответствует enum BusType в common-модуле
-      enum: [I2C, SPI, ONEWIRE]
-
-    SensorType:
-      type: string
-      description: Физическая величина, соответствует measurement_classes.type_code
+      description: Тип измеряемой величины, enum MetricType в common-модуле
       enum: [TEMPERATURE, PRESSURE, HUMIDITY, ILLUMINANCE]
 
-    SensorStatus:
+    BridgeStatus:
       type: string
-      description: Статус датчика, соответствует sensors.status
-      enum: [DISCOVERED, ACTIVE, TEMPORARILY_UNAVAILABLE, DISABLED, RETIRED]
+      description: Статус моста, bridges.status
+      enum: [DISCOVERED, ACTIVE, DISABLED]
 
     BatchStatus:
       type: string
       description: |
-        Статус пакета, соответствует batches.status.
-        ACCEPTED — пакет принят впервые и записан, ответ 201.
-        REJECTED — пакет уже был принят ранее, повторная отправка проигнорирована, ответ 200.
+        Результат приёма batch (в БД не хранится).
+        ACCEPTED — принят впервые, ответ 201.
+        REJECTED — уже был принят ранее, повтор проигнорирован, ответ 200.
       enum: [ACCEPTED, REJECTED]
 
-    DiscoverRequest:
+    # ---------- Discovery ----------
+    DiscoveryRequest:
       type: object
       additionalProperties: false
-      required: [sensors]
-      description: Тело метода Client#sendDiscovery, класс DiscoverRequestDto
+      required: [buses]
       properties:
+        buses:
+          type: array
+          description: Все шины моста с найденными датчиками
+          items:
+            $ref: '#/components/schemas/DiscoveredBus'
+
+    DiscoveredBus:
+      type: object
+      additionalProperties: false
+      required: [name, sensors]
+      properties:
+        name:
+          type: string
+          maxLength: 50
+          description: buses.name
+          example: i2c1
         sensors:
           type: array
-          description: Все датчики, найденные на всех шинах этого bridge
           items:
             $ref: '#/components/schemas/DiscoveredSensor'
 
     DiscoveredSensor:
       type: object
       additionalProperties: false
-      description: Результат обнаружения одного устройства, класс DetectedSensorDto
-      required: [busType, sensorType, address]
+      required: [sensorCode, channels]
       properties:
-        busType:
-          $ref: '#/components/schemas/BusType'
-        sensorType:
-          $ref: '#/components/schemas/SensorType'
-        address:
+        sensorCode:
           type: string
           maxLength: 100
-          description: Адрес на шине, соответствует sensors.address
+          description: sensors.sensor_code, формат <шина>-<адрес>
+          example: i2c1-0x76
+        address:
+          type: string
+          maxLength: 50
+          nullable: true
+          description: sensors.address
           example: "0x76"
         model:
           type: string
-          maxLength: 255
+          maxLength: 100
           nullable: true
-          description: Модель устройства, соответствует sensors.model
           example: BME280
         serialNumber:
           type: string
-          maxLength: 255
+          maxLength: 100
           nullable: true
-          description: Серийный номер, соответствует sensors.serial_number
-          example: 80-1234566
+          example: "80-1234566"
+        channels:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/DiscoveredChannel'
 
-    Sensor:
+    DiscoveredChannel:
       type: object
       additionalProperties: false
-      description: Датчик, модель com.github.zavyalovra.pisense.model.Sensor
-      required: [id, address, status, createdAt]
+      required: [name, metricType, unit]
+      properties:
+        name:
+          type: string
+          maxLength: 50
+          description: sensor_channels.name
+          example: temperature
+        metricType:
+          $ref: '#/components/schemas/MetricType'
+        unit:
+          type: string
+          maxLength: 20
+          description: |
+            sensor_channels.unit. В БД колонка допускает NULL, но в контракте
+            поле обязательно: канал без единицы измерения бесполезен.
+          example: Cel
+
+    # ---------- Топология ----------
+    Bridge:
+      type: object
+      additionalProperties: false
+      required: [id, name, status, createdAt]
       properties:
         id:
           type: integer
           format: int64
           readOnly: true
-          description: sensors.id
-        address:
+        name:
           type: string
           maxLength: 100
-          description: sensors.address
-          example: "0x76"
-        model:
-          type: string
-          maxLength: 255
-          nullable: true
-          description: sensors.model
-          example: BME280
-        serialNumber:
-          type: string
-          maxLength: 255
-          nullable: true
-          description: sensors.serial_number
-        measurementClass:
-          $ref: '#/components/schemas/MeasurementClass'
-        location:
-          allOf:
-            - $ref: '#/components/schemas/Location'
-          nullable: true
-          description: sensors.location_id может быть NULL, датчик может быть без места
+          example: pi-kitchen
         status:
-          $ref: '#/components/schemas/SensorStatus'
+          $ref: '#/components/schemas/BridgeStatus'
         createdAt:
           type: string
           format: date-time
           readOnly: true
-          description: sensors.created_at
         lastSeenAt:
           type: string
           format: date-time
           nullable: true
           readOnly: true
-          description: sensors.last_seen_at, обновляется при discovery
+          description: Время приёма последнего batch
+
+    BridgeUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/BridgeStatus'
+
+    BridgeTopology:
+      allOf:
+        - $ref: '#/components/schemas/Bridge'
+        - type: object
+          required: [buses]
+          properties:
+            buses:
+              type: array
+              items:
+                $ref: '#/components/schemas/Bus'
+
+    Bus:
+      type: object
+      additionalProperties: false
+      required: [id, name, sensors]
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        name:
+          type: string
+          example: i2c1
+        sensors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Sensor'
+
+    Sensor:
+      type: object
+      additionalProperties: false
+      required: [id, busId, sensorCode, createdAt, channels]
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        busId:
+          type: integer
+          format: int64
+          readOnly: true
+        sensorCode:
+          type: string
+          example: i2c1-0x76
+        address:
+          type: string
+          nullable: true
+          example: "0x76"
+        model:
+          type: string
+          nullable: true
+          example: BME280
+        serialNumber:
+          type: string
+          nullable: true
+        location:
+          type: string
+          nullable: true
+          maxLength: 100
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/SensorChannel'
 
     SensorUpdateRequest:
       type: object
       additionalProperties: false
       description: PATCH-семантика, передаются только изменяемые поля
       properties:
-        measurementClassId:
-          type: integer
-          format: int64
-          description: sensors.measurement_class_id
-          minimum: 1
-        locationId:
-          type: integer
-          format: int64
+        location:
+          type: string
           nullable: true
-          description: sensors.location_id, null снимает привязку к месту
-          minimum: 1
-        status:
-          $ref: '#/components/schemas/SensorStatus'
+          maxLength: 100
+          description: sensors.location, null снимает привязку к месту
 
-    MeasurementClass:
+    SensorChannel:
       type: object
       additionalProperties: false
-      description: Класс физической величины, модель MeasurementClass
-      required: [id, typeCode, unitOfMeasurement, description]
+      required: [id, name, metricType, unit]
       properties:
         id:
           type: integer
           format: int64
           readOnly: true
-          description: measurement_classes.id
-        typeCode:
-          $ref: '#/components/schemas/SensorType'
-        unitOfMeasurement:
-          type: string
-          maxLength: 50
-          description: measurement_classes.unit_of_measurement
-          example: "°C"
-        description:
-          type: string
-          maxLength: 255
-          description: measurement_classes.description
-          example: Температура
-
-    MeasurementClassCreateRequest:
-      type: object
-      additionalProperties: false
-      required: [typeCode, unitOfMeasurement, description]
-      properties:
-        typeCode:
-          $ref: '#/components/schemas/SensorType'
-        unitOfMeasurement:
-          type: string
-          maxLength: 50
-          example: "°C"
-        description:
-          type: string
-          maxLength: 255
-          example: Температура
-
-    Location:
-      type: object
-      additionalProperties: false
-      description: Место размещения датчика, модель Locations
-      required: [id, name, description]
-      properties:
-        id:
+        sensorId:
           type: integer
           format: int64
           readOnly: true
-          description: locations.id
         name:
           type: string
-          maxLength: 100
-          description: locations.name
-          example: Серверная
-        description:
+          example: temperature
+        metricType:
+          $ref: '#/components/schemas/MetricType'
+        unit:
           type: string
-          maxLength: 255
-          description: locations.description
-          example: Стойка 3
+          example: Cel
 
-    LocationCreateRequest:
+    # ---------- Batch и измерения ----------
+    BatchCreateRequest:
       type: object
       additionalProperties: false
-      required: [name, description]
-      properties:
-        name:
-          type: string
-          maxLength: 100
-          example: Серверная
-        description:
-          type: string
-          maxLength: 255
-          example: Стойка 3
-
-    MeasurementBatch:
-      type: object
-      additionalProperties: false
-      description: Пакет измерений, модель Batch
-      required: [id, batchId, status, receivedAt]
-      properties:
-        id:
-          type: integer
-          format: int64
-          readOnly: true
-          description: batches.id, внутренний идентификатор
-        batchId:
-          type: string
-          format: uuid
-          description: batches.uuid, внешний UUID пакета, его генерирует bridge
-        status:
-          $ref: '#/components/schemas/BatchStatus'
-        measuredAt:
-          type: string
-          format: date-time
-          nullable: true
-          description: batches.measured_at
-        receivedAt:
-          type: string
-          format: date-time
-          readOnly: true
-          description: batches.received_at
-        measurements:
-          type: array
-          readOnly: true
-          description: Измерения пакета, measurements.batch_id = batches.id
-          items:
-            $ref: '#/components/schemas/Measurement'
-
-    MeasurementBatchCreateRequest:
-      type: object
-      additionalProperties: false
-      required: [batchId, measurements]
+      required: [batchId, collectedAt, measurements]
       properties:
         batchId:
           type: string
           format: uuid
           description: batches.uuid, генерирует bridge до отправки
-        measuredAt:
+        collectedAt:
           type: string
           format: date-time
-          nullable: true
-          description: batches.measured_at, время формирования пакета
+          description: batches.collected_at, время опроса шин на bridge
         measurements:
           type: array
           minItems: 1
           items:
-            $ref: '#/components/schemas/MeasurementCreateRequest'
+            $ref: '#/components/schemas/TelemetryItem'
 
-    Measurement:
+    TelemetryItem:
       type: object
       additionalProperties: false
-      description: Измерение, модель Measurement
-      required:
-        - id
-        - measurementId
-        - measurementBatchId
-        - channelId
-        - measurementValue
-        - measuredAt
-        - receivedAt
+      description: Одно измерение, аналог TelemetryDto с добавлением имени канала и времени
+      required: [sensorCode, channelName, metricType, unit, measurementValue, measuredAt]
       properties:
-        id:
-          type: integer
-          format: int64
-          readOnly: true
-          description: measurements.id
-        measurementId:
+        sensorCode:
           type: string
-          format: uuid
-          description: measurements.uuid, внешний UUID измерения
-        measurementBatchId:
-          type: integer
-          format: int64
-          description: measurements.batch_id, внутренний идентификатор пакета
-        channelId:
-          type: integer
-          format: int64
-          description: measurements.channel_id, ссылка на sensor_channels
-        measurementValue:
-          type: number
-          format: double
-          description: measurements.measurement_value
-          example: 23.7
-        measuredAt:
+          maxLength: 100
+          example: i2c1-0x76
+        channelName:
           type: string
-          format: date-time
-          description: measurements.measured_at, время измерения на bridge
-        receivedAt:
+          maxLength: 50
+          example: temperature
+        metricType:
+          $ref: '#/components/schemas/MetricType'
+        unit:
           type: string
-          format: date-time
-          readOnly: true
-          description: measurements.received_at, время сохранения на server
-
-    MeasurementCreateRequest:
-      type: object
-      additionalProperties: false
-      required: [measurementId, channelId, measurementValue, measuredAt]
-      properties:
-        measurementId:
-          type: string
-          format: uuid
-          description: measurements.uuid, генерирует bridge
-        channelId:
-          type: integer
-          format: int64
-          minimum: 1
-          description: measurements.channel_id, ссылка на sensor_channels
+          maxLength: 20
+          example: Cel
         measurementValue:
           type: number
           format: double
@@ -781,6 +770,122 @@ components:
           type: string
           format: date-time
           description: measurements.measured_at
+
+    BatchReceipt:
+      type: object
+      additionalProperties: false
+      required: [batchId, status, receivedAt, measurementsCount]
+      properties:
+        batchId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/BatchStatus'
+        receivedAt:
+          type: string
+          format: date-time
+          description: Время первого приёма batch сервером
+        measurementsCount:
+          type: integer
+          minimum: 0
+          description: Сколько измерений сохранено в batch
+
+    Batch:
+      type: object
+      additionalProperties: false
+      required: [id, batchId, bridgeName, collectedAt, receivedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+          description: batches.id, внутренний идентификатор
+        batchId:
+          type: string
+          format: uuid
+          description: batches.uuid
+        bridgeName:
+          type: string
+        collectedAt:
+          type: string
+          format: date-time
+        receivedAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    BatchDetails:
+      allOf:
+        - $ref: '#/components/schemas/Batch'
+        - type: object
+          required: [measurements]
+          properties:
+            measurements:
+              type: array
+              items:
+                $ref: '#/components/schemas/Measurement'
+
+    Measurement:
+      type: object
+      additionalProperties: false
+      required: [id, channelId, measurementValue, measuredAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        batchId:
+          type: string
+          format: uuid
+          description: UUID batch, в который пришло измерение
+        channelId:
+          type: integer
+          format: int64
+          description: measurements.channel_id
+        measurementValue:
+          type: number
+          format: double
+          description: measurements.measurement_value
+          example: 23.7
+        measuredAt:
+          type: string
+          format: date-time
+
+    PageInfo:
+      type: object
+      required: [page, size, totalElements, totalPages]
+      properties:
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+
+    BatchPage:
+      allOf:
+        - $ref: '#/components/schemas/PageInfo'
+        - type: object
+          required: [content]
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/Batch'
+
+    MeasurementPage:
+      allOf:
+        - $ref: '#/components/schemas/PageInfo'
+        - type: object
+          required: [content]
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/Measurement'
 
     ApiError:
       type: object
@@ -801,6 +906,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: Мост отключён (status = DISABLED)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
     NotFound:
       description: Ресурс не найден
       content:
@@ -808,13 +919,13 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
     Conflict:
-      description: Нарушено уникальное ограничение
+      description: Конфликт данных, например отличается metricType или unit существующего канала
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
     UnprocessableEntity:
-      description: Бизнес-валидация не пройдена
+      description: Бизнес-валидация не пройдена (неизвестный канал, несовпадение metricType или unit, дубль канала в batch)
       content:
         application/json:
           schema:
