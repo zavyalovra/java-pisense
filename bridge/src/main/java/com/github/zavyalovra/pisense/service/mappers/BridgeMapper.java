@@ -10,12 +10,12 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
-public class DiscoveryMapper {
+public class BridgeMapper {
 
     public static BridgeRequestDto toDto(List<BusSnapshot> buses) {
         List<BusRequestDto> busDtos = buses.stream()
                 .filter(bus -> !bus.getSensors().isEmpty())
-                .map(DiscoveryMapper::toDto)
+                .map(BridgeMapper::toDto)
                 .toList();
 
         return new BridgeRequestDto(busDtos);

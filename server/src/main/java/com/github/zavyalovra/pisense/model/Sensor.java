@@ -26,7 +26,9 @@ public class Sensor extends BaseEntity {
     @ToString.Exclude
     private Bus bus;
 
-    /** Адрес на шине; уникален в пределах шины. */
+    @Column(name = "sensor_code", nullable = false)
+    private String sensorCode;
+
     private String address;
 
     private String model;

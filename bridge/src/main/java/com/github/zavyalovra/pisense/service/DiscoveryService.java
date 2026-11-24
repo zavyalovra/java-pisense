@@ -2,7 +2,7 @@ package com.github.zavyalovra.pisense.service;
 
 import com.github.zavyalovra.pisense.common.dto.BridgeRequestDto;
 import com.github.zavyalovra.pisense.service.discovery.DiscoveryScanner;
-import com.github.zavyalovra.pisense.service.mappers.DiscoveryMapper;
+import com.github.zavyalovra.pisense.service.mappers.BridgeMapper;
 import com.github.zavyalovra.pisense.service.port.DiscoverySender;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +16,7 @@ public class DiscoveryService {
     private final DiscoverySender sender;
 
     public void reportDiscovery() {
-        BridgeRequestDto body = DiscoveryMapper.toDto(scanner.scan());
+        BridgeRequestDto body = BridgeMapper.toDto(scanner.scan());
 
         if (body.getBuses().isEmpty()) {
             log.debug("discovery: отправлять нечего");

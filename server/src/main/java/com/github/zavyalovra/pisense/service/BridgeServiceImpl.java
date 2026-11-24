@@ -34,7 +34,7 @@ public class BridgeServiceImpl implements BridgeService {
 
     @Override
     @Transactional
-    public BridgeResponseDto addBridge(String bridgeName, BridgeRequestDto bridgeDto) {
+    public BridgeResponseDto discover(String bridgeName, BridgeRequestDto bridgeDto) {
         return null;
     }
 

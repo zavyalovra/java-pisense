@@ -12,7 +12,7 @@ public interface BridgeService {
 
     Optional<BridgeResponseDto> getBridge(Long bridgeId);
 
-    BridgeResponseDto addBridge(String bridgeId, BridgeRequestDto bridgeDto);
+    BridgeResponseDto discover(String bridgeId, BridgeRequestDto bridgeDto);
 
     void deleteBridge(Long bridgeId);
 }

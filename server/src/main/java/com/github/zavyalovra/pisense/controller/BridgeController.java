@@ -17,6 +17,6 @@ public class BridgeController {
     @PostMapping("/{bridgeName}/discovery")
     public BridgeResponseDto toDiscoverBridge(@PathVariable String bridgeName,
                                               @Valid @RequestBody BridgeRequestDto bridgeRequestDto) {
-        return bridgeService.addBridge(bridgeName, bridgeRequestDto);
+        return bridgeService.discover(bridgeName, bridgeRequestDto);
     }
 }
