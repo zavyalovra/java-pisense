@@ -2,17 +2,19 @@ package com.github.zavyalovra.pisense.service;
 
 import com.github.zavyalovra.pisense.common.dto.BridgeRequestDto;
 import com.github.zavyalovra.pisense.dto.BridgeResponseDto;
+import com.github.zavyalovra.pisense.dto.BridgeShortResponseDto;
+import com.github.zavyalovra.pisense.dto.BridgeStatusRequestDto;
 
 import java.util.List;
-import java.util.Optional;
 
 public interface BridgeService {
 
-    List<BridgeResponseDto> getAllBridge();
+    List<BridgeShortResponseDto> getAllBridge();
 
-    Optional<BridgeResponseDto> getBridge(Long bridgeId);
+    BridgeResponseDto getBridgeByName(String bridgeName);
 
     BridgeResponseDto discover(String bridgeId, BridgeRequestDto bridgeDto);
 
-    void deleteBridge(Long bridgeId);
+    BridgeShortResponseDto changeBridgeStatus(String bridgeName, BridgeStatusRequestDto bridgeRequestDto);
+
 }

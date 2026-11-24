@@ -8,6 +8,8 @@ import lombok.ToString;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "bridges", schema = "public")
@@ -15,6 +17,9 @@ import java.time.Instant;
 @Setter
 @ToString
 public class Bridge extends BaseEntity {
+
+    @OneToMany(mappedBy = "bridge", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<Bus> buses = new LinkedHashSet<>();
 
     /** pisense.bridge-id из application.properties */
     @Column(name = "name", nullable = false, unique = true)
@@ -30,4 +35,9 @@ public class Bridge extends BaseEntity {
 
     @Column(nullable = true)
     private Instant lastSeenAt;
+
+    public void addBus(Bus bus) {
+        buses.add(bus);
+        bus.setBridge(this);
+    }
 }

@@ -1,6 +1,5 @@
 package com.github.zavyalovra.pisense.dto;
 
-import com.github.zavyalovra.pisense.common.dto.BusRequestDto;
 import com.github.zavyalovra.pisense.common.dto.BusResponseDto;
 import com.github.zavyalovra.pisense.common.model.DeviceStatus;
 import lombok.AllArgsConstructor;
