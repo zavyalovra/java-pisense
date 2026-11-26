@@ -3,27 +3,25 @@ info:
   title: piSense API
   version: 3.0.0
   description: |
-    Контракт обмена между `pisense-bridge` и `pisense-server`.
+    Контракт REST API `pisense-server` для обмена с `pisense-bridge` и клиентами.
 
-    Схема соответствует базе данных v3 (`docs/pisense-er.dbml`, `server/src/main/resources/schema.sql`):
+    Схема соответствует базе данных v3 (`docs/pisense-er.dbml`,
+    `server/src/main/resources/schema.sql`):
     `bridges → buses → sensors → sensor_channels` (топология) и
     `bridges → batches → measurements` (поток данных).
 
-    **Как работает обмен**
-    1. При старте (и периодически) bridge отправляет `discovery` — описание своей топологии:
-       шины, датчики и их каналы. Сервер создаёт или обновляет записи.
-    2. По расписанию bridge опрашивает все шины и датчики, формирует `batch` со всеми
-       измерениями и отправляет его на сервер.
-    3. Измерение указывает канал естественным ключом: `sensorCode` + `channelName`
-       (в пределах моста). Сервер сам находит `sensor_channels.id`.
+    **Что уже реализовано.** `BridgeController`:
+    `GET /api/v1/bridges`, `GET /api/v1/bridges/{bridgeName}`,
+    `PATCH /api/v1/bridges/{bridgeName}`,
+    `POST /api/v1/bridges/{bridgeName}/discovery`.
+    Остальные операции описаны как целевой контракт в том же стиле.
 
-    **Идемпотентность.** `batchId` — это `batches.uuid`, его генерирует bridge до отправки.
-    Первая отправка возвращает `201`, повторная с тем же `batchId` — `200` без дублирования данных.
+    **Ошибки.** Все ошибки возвращаются в едином формате `ErrorResponse`:
+    `{"error": "...", "description": "..."}`. Соответствие задаёт
+    `server/.../exception/ErrorHandler.java`: `400` — валидация, `403` — запрет,
+    `404` — не найдено, `409` — конфликт данных.
 
-    **Идентификация моста.** В пути используется уникальное имя моста `bridgeName`
-    (`bridges.name`).
-
-    Аутентификация не реализована. Ошибки возвращаются в едином формате `ApiError`.
+    **Аутентификация** не реализована.
 
 servers:
   - url: http://localhost:9090
@@ -50,12 +48,8 @@ paths:
     get:
       tags: [Bridges]
       summary: Список мостов
+      description: Краткие карточки мостов без топологии (`BridgeShortResponseDto`).
       operationId: listBridges
-      parameters:
-        - name: status
-          in: query
-          schema:
-            $ref: '#/components/schemas/BridgeStatus'
       responses:
         '200':
           description: Список мостов
@@ -64,15 +58,13 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Bridge'
-        '400':
-          $ref: '#/components/responses/BadRequest'
+                  $ref: '#/components/schemas/BridgeShort'
 
   /api/v1/bridges/{bridgeName}:
     get:
       tags: [Bridges]
       summary: Получить мост с топологией
-      description: Возвращает мост и вложенные шины, датчики и каналы.
+      description: 'Возвращает `BridgeResponseDto`: мост и вложенные шины, датчики и каналы.'
       operationId: getBridge
       parameters:
         - $ref: '#/components/parameters/BridgeName'
@@ -82,13 +74,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BridgeTopology'
+                $ref: '#/components/schemas/Bridge'
         '404':
           $ref: '#/components/responses/NotFound'
     patch:
       tags: [Bridges]
       summary: Изменить статус моста
-      description: Мост в статусе `DISABLED` не принимает batch (ответ `403`).
+      description: |
+        Меняет `bridges.status`. Текущая реализация дополнительно обновляет
+        `bridges.last_seen_at`. Возвращает `BridgeShortResponseDto`.
       operationId: updateBridge
       parameters:
         - $ref: '#/components/parameters/BridgeName'
@@ -97,7 +91,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BridgeUpdateRequest'
+              $ref: '#/components/schemas/BridgeStatusRequest'
             example:
               status: ACTIVE
       responses:
@@ -106,7 +100,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Bridge'
+                $ref: '#/components/schemas/BridgeShort'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -121,9 +115,11 @@ paths:
         мост по `bridgeName` (новый получает статус `DISCOVERED`),
         шину по `(мост, name)`, датчик по `(шина, sensorCode)`, канал по `(датчик, name)`.
 
-        * Для существующих датчиков обновляются `address`, `model`, `serialNumber`.
-        * `metricType` и `unit` существующего канала не меняются: при расхождении — `409`.
+        * Для существующих датчиков перезаписываются `address`, `model`, `serialNumber`.
+        * Для существующих каналов перезаписываются `metricType` и `unit`.
+        * `location` при discovery не меняется.
         * Шины, датчики и каналы, которых нет в запросе, **не удаляются**.
+        * Успешный запрос обновляет `bridges.last_seen_at`.
       operationId: reportDiscovery
       parameters:
         - $ref: '#/components/parameters/BridgeName'
@@ -166,11 +162,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BridgeTopology'
+                $ref: '#/components/schemas/Bridge'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '409':
-          $ref: '#/components/responses/Conflict'
 
   /api/v1/bridges/{bridgeName}/batches:
     post:
@@ -186,9 +180,8 @@ paths:
         **Правила.**
         * Мост должен существовать (сначала `discovery`), иначе `404`; в статусе `DISABLED` → `403`.
         * Каждое измерение ссылается на канал парой `sensorCode` + `channelName`.
-          Неизвестный канал → `422`, весь batch отклоняется.
-        * `metricType` и `unit` в измерении проверяются на совпадение с каналом, при расхождении → `422`.
-        * Один канал может встретиться в batch не более одного раза (`ux_measurements_batch_channel`).
+          Неизвестный канал или дубль канала в batch → `400`.
+        * `metricType` и `unit` в измерении должны совпадать с каналом, иначе `409`.
         * Успешный приём обновляет `bridges.last_seen_at`.
       operationId: createBatch
       parameters:
@@ -234,8 +227,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
+        '409':
+          $ref: '#/components/responses/Conflict'
     get:
       tags: [Batches]
       summary: Список batch моста
@@ -429,6 +422,7 @@ components:
         minLength: 1
         maxLength: 100
         example: pi-kitchen
+
     SensorId:
       name: sensorId
       in: path
@@ -438,6 +432,7 @@ components:
         type: integer
         format: int64
         minimum: 1
+
     ChannelId:
       name: channelId
       in: path
@@ -447,6 +442,7 @@ components:
         type: integer
         format: int64
         minimum: 1
+
     BatchId:
       name: batchId
       in: path
@@ -455,6 +451,7 @@ components:
       schema:
         type: string
         format: uuid
+
     From:
       name: from
       in: query
@@ -462,6 +459,7 @@ components:
       schema:
         type: string
         format: date-time
+
     To:
       name: to
       in: query
@@ -469,6 +467,7 @@ components:
       schema:
         type: string
         format: date-time
+
     Page:
       name: page
       in: query
@@ -477,6 +476,7 @@ components:
         type: integer
         minimum: 0
         default: 0
+
     Size:
       name: size
       in: query
@@ -488,15 +488,18 @@ components:
         default: 100
 
   schemas:
+    # ---------- Enum'ы ----------
     MetricType:
       type: string
       description: Тип измеряемой величины, enum MetricType в common-модуле
       enum: [TEMPERATURE, PRESSURE, HUMIDITY, ILLUMINANCE]
 
-    BridgeStatus:
+    DeviceStatus:
       type: string
-      description: Статус моста, bridges.status
-      enum: [DISCOVERED, ACTIVE, DISABLED]
+      description: |
+        Статус, enum DeviceStatus в common-модуле. Для моста используется
+        как `bridges.status`; колонка в БД — varchar(30) без CHECK.
+      enum: [DISCOVERED, ACTIVE, TEMPORARILY_UNAVAILABLE, DISABLED, RETIRED]
 
     BatchStatus:
       type: string
@@ -516,9 +519,9 @@ components:
           type: array
           description: Все шины моста с найденными датчиками
           items:
-            $ref: '#/components/schemas/DiscoveredBus'
+            $ref: '#/components/schemas/DiscoveryBus'
 
-    DiscoveredBus:
+    DiscoveryBus:
       type: object
       additionalProperties: false
       required: [name, sensors]
@@ -531,9 +534,9 @@ components:
         sensors:
           type: array
           items:
-            $ref: '#/components/schemas/DiscoveredSensor'
+            $ref: '#/components/schemas/DiscoverySensor'
 
-    DiscoveredSensor:
+    DiscoverySensor:
       type: object
       additionalProperties: false
       required: [sensorCode, channels]
@@ -563,9 +566,9 @@ components:
           type: array
           minItems: 1
           items:
-            $ref: '#/components/schemas/DiscoveredChannel'
+            $ref: '#/components/schemas/DiscoveryChannel'
 
-    DiscoveredChannel:
+    DiscoveryChannel:
       type: object
       additionalProperties: false
       required: [name, metricType, unit]
@@ -585,10 +588,10 @@ components:
             поле обязательно: канал без единицы измерения бесполезен.
           example: Cel
 
-    # ---------- Топология ----------
-    Bridge:
+    # ---------- Мост и топология ----------
+    BridgeShort:
       type: object
-      additionalProperties: false
+      description: bridge без топологии, `BridgeShortResponseDto`
       required: [id, name, status, createdAt]
       properties:
         id:
@@ -600,7 +603,7 @@ components:
           maxLength: 100
           example: pi-kitchen
         status:
-          $ref: '#/components/schemas/BridgeStatus'
+          $ref: '#/components/schemas/DeviceStatus'
         createdAt:
           type: string
           format: date-time
@@ -610,19 +613,13 @@ components:
           format: date-time
           nullable: true
           readOnly: true
-          description: Время приёма последнего batch
+          description: Время последней активности моста
 
-    BridgeUpdateRequest:
+    Bridge:
       type: object
-      additionalProperties: false
-      required: [status]
-      properties:
-        status:
-          $ref: '#/components/schemas/BridgeStatus'
-
-    BridgeTopology:
+      description: мост с топологией, `BridgeResponseDto`
       allOf:
-        - $ref: '#/components/schemas/Bridge'
+        - $ref: '#/components/schemas/BridgeShort'
         - type: object
           required: [buses]
           properties:
@@ -630,6 +627,14 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/Bus'
+
+    BridgeStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/DeviceStatus'
 
     Bus:
       type: object
@@ -642,6 +647,7 @@ components:
           readOnly: true
         name:
           type: string
+          maxLength: 50
           example: i2c1
         sensors:
           type: array
@@ -663,22 +669,26 @@ components:
           readOnly: true
         sensorCode:
           type: string
+          maxLength: 100
           example: i2c1-0x76
         address:
           type: string
+          maxLength: 50
           nullable: true
           example: "0x76"
         model:
           type: string
+          maxLength: 100
           nullable: true
           example: BME280
         serialNumber:
           type: string
+          maxLength: 100
           nullable: true
         location:
           type: string
-          nullable: true
           maxLength: 100
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -714,11 +724,13 @@ components:
           readOnly: true
         name:
           type: string
+          maxLength: 50
           example: temperature
         metricType:
           $ref: '#/components/schemas/MetricType'
         unit:
           type: string
+          maxLength: 20
           example: Cel
 
     # ---------- Batch и измерения ----------
@@ -744,7 +756,7 @@ components:
     TelemetryItem:
       type: object
       additionalProperties: false
-      description: Одно измерение, аналог TelemetryDto с добавлением имени канала и времени
+      description: 'Одно измерение: канал задаётся парой sensorCode + channelName'
       required: [sensorCode, channelName, metricType, unit, measurementValue, measuredAt]
       properties:
         sensorCode:
@@ -792,7 +804,7 @@ components:
 
     Batch:
       type: object
-      additionalProperties: false
+      description: batch без измерений
       required: [id, batchId, bridgeName, collectedAt, receivedAt]
       properties:
         id:
@@ -806,6 +818,7 @@ components:
           description: batches.uuid
         bridgeName:
           type: string
+          example: pi-kitchen
         collectedAt:
           type: string
           format: date-time
@@ -815,6 +828,8 @@ components:
           readOnly: true
 
     BatchDetails:
+      type: object
+      description: batch с измерениями
       allOf:
         - $ref: '#/components/schemas/Batch'
         - type: object
@@ -837,6 +852,7 @@ components:
         batchId:
           type: string
           format: uuid
+          readOnly: true
           description: UUID batch, в который пришло измерение
         channelId:
           type: integer
@@ -850,22 +866,29 @@ components:
         measuredAt:
           type: string
           format: date-time
+          description: measurements.measured_at
 
+    # ---------- Страницы ----------
     PageInfo:
       type: object
       required: [page, size, totalElements, totalPages]
       properties:
         page:
           type: integer
+          minimum: 0
         size:
           type: integer
+          minimum: 1
         totalElements:
           type: integer
           format: int64
+          minimum: 0
         totalPages:
           type: integer
+          minimum: 0
 
     BatchPage:
+      type: object
       allOf:
         - $ref: '#/components/schemas/PageInfo'
         - type: object
@@ -877,6 +900,7 @@ components:
                 $ref: '#/components/schemas/Batch'
 
     MeasurementPage:
+      type: object
       allOf:
         - $ref: '#/components/schemas/PageInfo'
         - type: object
@@ -887,46 +911,44 @@ components:
               items:
                 $ref: '#/components/schemas/Measurement'
 
-    ApiError:
+    # ---------- Ошибка ----------
+    ErrorResponse:
       type: object
       additionalProperties: false
-      required: [code, message]
+      required: [error, description]
+      description: |
+        Единый формат ошибки, `exception/dto/ErrorResponse.java`.
+        `error` — краткое название, `description` — подробности.
       properties:
-        code:
+        error:
           type: string
-          example: VALIDATION_ERROR
-        message:
+          example: Ошибка валидации
+        description:
           type: string
-          example: Описание ошибки
+          example: Поле status обязательно
 
   responses:
     BadRequest:
-      description: Некорректный запрос, ошибка разбора или валидации полей
+      description: Некорректный запрос или ошибка валидации
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
+            $ref: '#/components/schemas/ErrorResponse'
     Forbidden:
-      description: Мост отключён (status = DISABLED)
+      description: Действие запрещено, например мост отключён (status = DISABLED)
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
+            $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: Ресурс не найден
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
+            $ref: '#/components/schemas/ErrorResponse'
     Conflict:
-      description: Конфликт данных, например отличается metricType или unit существующего канала
+      description: Конфликт данных, например metricType или unit измерения не совпадает с каналом
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ApiError'
-    UnprocessableEntity:
-      description: Бизнес-валидация не пройдена (неизвестный канал, несовпадение metricType или unit, дубль канала в batch)
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ApiError'
+            $ref: '#/components/schemas/ErrorResponse'

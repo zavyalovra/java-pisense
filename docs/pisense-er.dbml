@@ -26,7 +26,6 @@ Table buses {
   id        bigint      [pk, increment]
   bridge_id bigint      [not null]
   name      varchar(50) [not null, note: 'i2c1, i2c2, spi0, onewire ...']
-  type      varchar(20) [not null, note: 'I2C | SPI | ONEWIRE | ...']
 
   indexes {
     (bridge_id, name) [unique, name: 'ux_buses_bridge_name']
@@ -79,10 +78,10 @@ Table batches {
 }
 
 Table measurements {
-  id          bigint      [pk, increment]
-  batch_id    bigint      [not null]
-  channel_id  bigint      [not null]
-  value       float8      [not null]
+  id                      bigint      [pk, increment]
+  batch_id                bigint      [not null]
+  channel_id              bigint      [not null]
+  measurement_value       float8      [not null]
   measured_at timestamptz [not null]
 
   indexes {

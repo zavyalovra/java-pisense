@@ -1,6 +1,5 @@
 package com.github.zavyalovra.pisense.controller;
 
-
 import com.github.zavyalovra.pisense.common.dto.BridgeRequestDto;
 import com.github.zavyalovra.pisense.dto.BridgeResponseDto;
 import com.github.zavyalovra.pisense.dto.BridgeShortResponseDto;

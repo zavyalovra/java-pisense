@@ -6,7 +6,6 @@ import lombok.Setter;
 import lombok.ToString;
 
 import java.time.Instant;
-import java.util.UUID;
 
 @Entity
 @Table(name = "measurements", schema = "public")
@@ -14,9 +13,6 @@ import java.util.UUID;
 @Setter
 @ToString
 public class Measurement extends BaseEntity {
-
-    @Column(nullable = false, unique = true)
-    private UUID uuid;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "batch_id", nullable = false)
