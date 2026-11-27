@@ -1,0 +1,464 @@
+{
+  "info": {
+    "_postman_id": "6f1c2f7a-3b2e-4c1d-9a55-8e0d7c4b1a20",
+    "name": "PiSense API",
+    "description": "Порядок запуска: Bridges -> Discovery (создаёт мост), затем List bridges, Get bridge, Update status; затем Actuator -> Health. Папка Bridges/Errors запускается вручную после основных запросов. Переменные коллекции: baseUrl, bridgeName, unknownBridgeName.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Bridges",
+      "item": [
+        {
+          "name": "Discovery",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Discovery возвращает 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Имя моста совпадает с bridgeName', function () {",
+                  "    pm.expect(jsonData.name).to.eql(pm.collectionVariables.get('bridgeName'));",
+                  "});",
+                  "",
+                  "pm.test('id моста — число', function () {",
+                  "    pm.expect(jsonData.id).to.be.a('number');",
+                  "});",
+                  "",
+                  "pm.test('В ответе есть хотя бы одна шина', function () {",
+                  "    pm.expect(Array.isArray(jsonData.buses)).to.be.true;",
+                  "    pm.expect(jsonData.buses.length).to.be.at.least(1);",
+                  "});",
+                  "",
+                  "pm.test('У первого датчика есть непустой список каналов', function () {",
+                  "    const firstSensor = jsonData.buses[0].sensors[0];",
+                  "    pm.expect(Array.isArray(firstSensor.channels)).to.be.true;",
+                  "    pm.expect(firstSensor.channels.length).to.be.at.least(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buses\": [\n    {\n      \"name\": \"i2c1\",\n      \"sensors\": [\n        {\n          \"sensorCode\": \"i2c1-0x76\",\n          \"address\": \"0x76\",\n          \"model\": \"BME280\",\n          \"channels\": [\n            {\n              \"name\": \"temperature\",\n              \"metricType\": \"TEMPERATURE\",\n              \"unit\": \"Celsius\"\n            },\n            {\n              \"name\": \"humidity\",\n              \"metricType\": \"HUMIDITY\",\n              \"unit\": \"%\"\n            },\n            {\n              \"name\": \"pressure\",\n              \"metricType\": \"PRESSURE\",\n              \"unit\": \"hPa\"\n            }\n          ]\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bridges/{{bridgeName}}/discovery",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bridges",
+                "{{bridgeName}}",
+                "discovery"
+              ]
+            },
+            "description": "Создаёт мост, если его ещё нет, и сохраняет топологию шин, датчиков и каналов."
+          },
+          "response": []
+        },
+        {
+          "name": "List bridges",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Список мостов возвращает 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Тело — объект с массивом content', function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    pm.expect(Array.isArray(jsonData.content)).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test('Пагинация from и size совпадает с запросом', function () {",
+                  "    pm.expect(jsonData.from).to.eql(0);",
+                  "    pm.expect(jsonData.size).to.eql(20);",
+                  "});",
+                  "",
+                  "pm.test('totalElements и totalPages — числа', function () {",
+                  "    pm.expect(jsonData.totalElements).to.be.a('number');",
+                  "    pm.expect(jsonData.totalPages).to.be.a('number');",
+                  "});",
+                  "",
+                  "pm.test('В content есть мост bridgeName', function () {",
+                  "    const names = jsonData.content.map(function (item) { return item.name; });",
+                  "    pm.expect(names).to.include(pm.collectionVariables.get('bridgeName'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bridges?from=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bridges"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Возвращает страницу мостов без топологии (BridgePage)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get bridge",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Мост возвращается со статусом 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Имя моста совпадает с bridgeName', function () {",
+                  "    pm.expect(jsonData.name).to.eql(pm.collectionVariables.get('bridgeName'));",
+                  "});",
+                  "",
+                  "pm.test('buses — массив', function () {",
+                  "    pm.expect(Array.isArray(jsonData.buses)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bridges/{{bridgeName}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bridges",
+                "{{bridgeName}}"
+              ]
+            },
+            "description": "Возвращает мост вместе с шинами, датчиками и каналами."
+          },
+          "response": []
+        },
+        {
+          "name": "Update status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Обновление статуса возвращает 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Статус моста — ACTIVE', function () {",
+                  "    pm.expect(jsonData.status).to.eql('ACTIVE');",
+                  "});",
+                  "",
+                  "pm.test('lastSeenAt заполнен', function () {",
+                  "    pm.expect(jsonData.lastSeenAt).to.not.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bridges/{{bridgeName}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bridges",
+                "{{bridgeName}}"
+              ]
+            },
+            "description": "Меняет статус моста и обновляет lastSeenAt текущим временем."
+          },
+          "response": []
+        },
+        {
+          "name": "Errors",
+          "item": [
+            {
+              "name": "Get unknown bridge",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const jsonData = pm.response.json();",
+                      "",
+                      "pm.test('Неизвестный мост возвращает 404', function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});",
+                      "",
+                      "pm.test('Тело ошибки содержит error и description', function () {",
+                      "    pm.expect(jsonData.error).to.be.a('string').and.not.empty;",
+                      "    pm.expect(jsonData.description).to.be.a('string').and.not.empty;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/bridges/{{unknownBridgeName}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "bridges",
+                    "{{unknownBridgeName}}"
+                  ]
+                },
+                "description": "Негативная проверка: мост с именем unknownBridgeName не существует."
+              },
+              "response": []
+            },
+            {
+              "name": "Invalid page offset",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const jsonData = pm.response.json();",
+                      "",
+                      "pm.test('Некратный from возвращает 400', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});",
+                      "",
+                      "pm.test('Тело ошибки содержит error и description', function () {",
+                      "    pm.expect(jsonData.error).to.be.a('string').and.not.empty;",
+                      "    pm.expect(jsonData.description).to.be.a('string').and.not.empty;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/bridges?from=10&size=20",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "bridges"
+                  ],
+                  "query": [
+                    {
+                      "key": "from",
+                      "value": "10"
+                    },
+                    {
+                      "key": "size",
+                      "value": "20"
+                    }
+                  ]
+                },
+                "description": "Негативная проверка: from=10 не кратен размеру страницы 20."
+              },
+              "response": []
+            },
+            {
+              "name": "Discovery without buses",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const jsonData = pm.response.json();",
+                      "",
+                      "pm.test('Пустой список шин возвращает 400', function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});",
+                      "",
+                      "pm.test('Тело ошибки содержит error и description', function () {",
+                      "    pm.expect(jsonData.error).to.be.a('string').and.not.empty;",
+                      "    pm.expect(jsonData.description).to.be.a('string').and.not.empty;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"buses\": []\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/bridges/{{bridgeName}}/discovery",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "bridges",
+                    "{{bridgeName}}",
+                    "discovery"
+                  ]
+                },
+                "description": "Негативная проверка: buses обязателен и не может быть пустым (@NotEmpty)."
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Actuator",
+      "item": [
+        {
+          "name": "Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Health возвращает 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Статус приложения — UP', function () {",
+                  "    pm.expect(jsonData.status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "Служебный health-эндпоинт Spring Boot Actuator."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:9090",
+      "type": "string"
+    },
+    {
+      "key": "bridgeName",
+      "value": "raspberrypi-01",
+      "type": "string"
+    },
+    {
+      "key": "unknownBridgeName",
+      "value": "no-such-bridge",
+      "type": "string"
+    }
+  ]
+}
