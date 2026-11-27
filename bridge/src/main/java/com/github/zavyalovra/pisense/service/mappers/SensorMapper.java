@@ -18,6 +18,7 @@ public class SensorMapper {
                 s.getAddress(),
                 s.getModel(),
                 s.getSerialNumber(),
+                null,                 //location задает администратор вручную
                 channels.stream().map(SensorMapper::toDto).toList());
     }
 

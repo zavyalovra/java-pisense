@@ -1,7 +1,6 @@
 package com.github.zavyalovra.pisense.dto;
 
 import com.github.zavyalovra.pisense.common.model.DeviceStatus;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -15,6 +14,5 @@ import lombok.Setter;
 public class BridgeStatusRequestDto {
 
     @NotNull(message = "Поле status обязательно")
-    @Valid
     private DeviceStatus status;
 }
