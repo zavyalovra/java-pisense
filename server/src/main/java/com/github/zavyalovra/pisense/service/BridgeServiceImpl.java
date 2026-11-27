@@ -1,33 +1,58 @@
 package com.github.zavyalovra.pisense.service;
 
 import com.github.zavyalovra.pisense.common.dto.BridgeRequestDto;
-import com.github.zavyalovra.pisense.common.model.DeviceStatus;
 import com.github.zavyalovra.pisense.dao.BridgeRepository;
 import com.github.zavyalovra.pisense.dto.BridgeResponseDto;
 
 import com.github.zavyalovra.pisense.dto.BridgeShortResponseDto;
 import com.github.zavyalovra.pisense.dto.BridgeStatusRequestDto;
+import com.github.zavyalovra.pisense.dto.PageResponseDto;
 import com.github.zavyalovra.pisense.dto.mappers.BridgeMapper;
 import com.github.zavyalovra.pisense.exception.NotFoundException;
+import com.github.zavyalovra.pisense.exception.ValidationException;
 import com.github.zavyalovra.pisense.model.Bridge;
 import lombok.AllArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.*;
 
 @Service
 @Transactional(readOnly = true)
 @AllArgsConstructor
 public class BridgeServiceImpl implements BridgeService {
     private final BridgeRepository bridgeRepository;
+    private static final Sort DEFAULT_SORT = Sort.by(Sort.Direction.ASC, "id");
+    private static final int MAX_PAGE_SIZE = 100;
 
     @Override
-    public List<BridgeShortResponseDto> getAllBridge() {
-        return bridgeRepository.findAll().stream()
-                .map(BridgeMapper::toShortResponseDto)
-                .toList();
+    public PageResponseDto<BridgeShortResponseDto> getAllBridge(int from, int size) {
+        if (from < 0) {
+            throw new ValidationException("Параметр 'from' должен быть больше или равен 0");
+        }
+        if (size <= 0) {
+            throw new ValidationException("Параметр 'size' должен быть больше 0");
+        }
+
+        // size больше максимума усекается, а не отклоняется
+        int safeSize = Math.min(size, MAX_PAGE_SIZE);
+
+        // from — смещение в элементах, оно должно попадать на границу страницы,
+        // иначе from / safeSize молча округлит его вниз и клиент получит не те данные.
+        if (from % safeSize != 0) {
+            throw new ValidationException("Параметр 'from' должен быть кратен размеру страницы");
+        }
+
+        Pageable pageable = PageRequest.of(from / safeSize, safeSize, DEFAULT_SORT);
+
+        Page<BridgeShortResponseDto> page = bridgeRepository.findAll(pageable)
+                .map(BridgeMapper::toShortResponseDto);
+
+        return PageResponseDto.of(page);
     }
 
     @Override

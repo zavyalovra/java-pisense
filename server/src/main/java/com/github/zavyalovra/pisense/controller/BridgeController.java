@@ -4,17 +4,19 @@ import com.github.zavyalovra.pisense.common.dto.BridgeRequestDto;
 import com.github.zavyalovra.pisense.dto.BridgeResponseDto;
 import com.github.zavyalovra.pisense.dto.BridgeShortResponseDto;
 import com.github.zavyalovra.pisense.dto.BridgeStatusRequestDto;
+import com.github.zavyalovra.pisense.dto.PageResponseDto;
 import com.github.zavyalovra.pisense.service.BridgeService;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/bridges")
 @AllArgsConstructor
+@Validated
 public class BridgeController {
+    private static final String DEFAULT_PAGE_SIZE = "20";
     private final BridgeService bridgeService;
 
     @PostMapping("/{bridgeName}/discovery")
@@ -24,8 +26,10 @@ public class BridgeController {
     }
 
     @GetMapping
-    public List<BridgeShortResponseDto> findBridges() {
-        return bridgeService.getAllBridge();
+    public PageResponseDto<BridgeShortResponseDto> findBridges(
+            @RequestParam(defaultValue = "0") int from,
+            @RequestParam(defaultValue = DEFAULT_PAGE_SIZE) int size) {
+        return bridgeService.getAllBridge(from, size);
     }
 
     @GetMapping("/{bridgeName}")

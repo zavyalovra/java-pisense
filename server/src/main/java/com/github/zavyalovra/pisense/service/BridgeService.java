@@ -4,12 +4,12 @@ import com.github.zavyalovra.pisense.common.dto.BridgeRequestDto;
 import com.github.zavyalovra.pisense.dto.BridgeResponseDto;
 import com.github.zavyalovra.pisense.dto.BridgeShortResponseDto;
 import com.github.zavyalovra.pisense.dto.BridgeStatusRequestDto;
+import com.github.zavyalovra.pisense.dto.PageResponseDto;
 
-import java.util.List;
 
 public interface BridgeService {
 
-    List<BridgeShortResponseDto> getAllBridge();
+    PageResponseDto<BridgeShortResponseDto> getAllBridge(int from, int size);
 
     BridgeResponseDto getBridgeByName(String bridgeName);
 
