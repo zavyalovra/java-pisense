@@ -67,10 +67,6 @@ public class BridgeMapper {
     }
 
     public static BridgeShortResponseDto toShortResponseDto(Bridge bridge) {
-        List<BusResponseDto> buses = bridge.getBuses().stream()
-                .map(BusMapper::toResponseDto)
-                .toList();
-
         return new BridgeShortResponseDto(
                 bridge.getId(),
                 bridge.getName(),
