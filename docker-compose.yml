@@ -86,7 +86,7 @@ services:
     ports:
       - "8081:8080"
     environment:
-      SWAGGER_JSON: /spec/pisense-api.yaml
+      SWAGGER_JSON: /spec/openapi.yaml
     volumes:
-      - ./docs/pisense-api.yaml:/spec/pisense-api.yaml:ro
+      - ./docs/openapi.yaml:/spec/openapi.yaml:ro
     restart: unless-stopped

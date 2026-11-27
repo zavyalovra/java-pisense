@@ -1,0 +1,587 @@
+openapi: 3.0.3
+
+info:
+  title: PiSense API
+  version: 1.0.0
+  description: |
+    Сервер PiSense принимает discovery от bridge и отдаёт топологию:
+    мосты, шины, датчики и каналы. Приём batch с измерениями, история
+    измерений, отдельные эндпоинты датчиков и каналов в этой версии
+    не реализованы.
+
+servers:
+  - url: http://localhost:9090
+    description: Локальный запуск и docker compose
+
+tags:
+  - name: Bridges
+    description: Мосты и их топология.
+  - name: Actuator
+    description: Служебный health-эндпоинт Spring Boot Actuator.
+
+security: []
+
+paths:
+  /api/v1/bridges/{bridgeName}/discovery:
+    post:
+      tags:
+        - Bridges
+      operationId: reportDiscovery
+      summary: Передать топологию моста
+      description: |
+        Принимает результат сканирования шин. Если моста с таким именем ещё нет,
+        он создаётся со статусом `DISCOVERED`; существующий мост обновляется,
+        а `lastSeenAt` выставляется в текущее время. Шины, датчики и каналы,
+        которых нет в запросе, не удаляются.
+      parameters:
+        - $ref: '#/components/parameters/BridgeName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiscoveryRequest'
+            examples:
+              bme280:
+                summary: Мост с одним датчиком BME280 на шине i2c1
+                value:
+                  buses:
+                    - name: i2c1
+                      sensors:
+                        - sensorCode: i2c1-0x76
+                          address: '0x76'
+                          model: BME280
+                          serialNumber: BME280-0001
+                          location: living-room
+                          channels:
+                            - name: temperature
+                              metricType: TEMPERATURE
+                              unit: Celsius
+                            - name: humidity
+                              metricType: HUMIDITY
+                              unit: '%'
+                            - name: pressure
+                              metricType: PRESSURE
+                              unit: hPa
+      responses:
+        '200':
+          description: Топология принята и сохранена.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bridge'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/bridges:
+    get:
+      tags:
+        - Bridges
+      operationId: listBridges
+      summary: Список мостов
+      description: |
+        Возвращает страницу мостов без топологии. `from` — смещение в элементах,
+        оно должно быть кратно фактическому размеру страницы, иначе вернётся 400.
+        Значение `size` больше 100 усекается до 100, а не отклоняется; фактический
+        размер страницы приходит в поле `size` ответа.
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: Смещение в элементах. Должно быть кратно фактическому размеру страницы.
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          description: Размер страницы. Значения больше 100 усекаются до 100.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 20
+      responses:
+        '200':
+          description: Страница мостов.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgePage'
+              examples:
+                page:
+                  summary: Первая страница с одним мостом
+                  value:
+                    content:
+                      - id: 1
+                        name: raspberrypi-01
+                        status: ACTIVE
+                        createdAt: '2026-05-01T10:15:30Z'
+                        lastSeenAt: '2026-05-01T12:00:00Z'
+                    from: 0
+                    size: 20
+                    totalElements: 1
+                    totalPages: 1
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/bridges/{bridgeName}:
+    get:
+      tags:
+        - Bridges
+      operationId: getBridge
+      summary: Мост с топологией
+      description: Возвращает мост вместе с шинами, датчиками и каналами.
+      parameters:
+        - $ref: '#/components/parameters/BridgeName'
+      responses:
+        '200':
+          description: Мост найден.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bridge'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      tags:
+        - Bridges
+      operationId: updateBridge
+      summary: Изменить статус моста
+      description: Меняет статус моста и обновляет `lastSeenAt` текущим временем.
+      parameters:
+        - $ref: '#/components/parameters/BridgeName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BridgeStatusRequest'
+      responses:
+        '200':
+          description: Статус обновлён.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgeShort'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /actuator/health:
+    get:
+      tags:
+        - Actuator
+      operationId: health
+      summary: Состояние приложения
+      description: |
+        Spring Boot Actuator health. Наружу открыт только этот эндпоинт
+        (`management.endpoints.web.exposure.include=health`), детали проверок
+        скрыты (`management.endpoint.health.show-details=never`).
+      responses:
+        '200':
+          description: Приложение отвечает; `status` равен `UP`, если проверки прошли.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: UP
+        '503':
+          description: Приложение не готово обслуживать запросы (`status` не `UP`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: DOWN
+
+components:
+  parameters:
+    BridgeName:
+      name: bridgeName
+      in: path
+      required: true
+      description: Имя моста (`bridges.name`, до 100 символов).
+      schema:
+        type: string
+        maxLength: 100
+
+  responses:
+    BadRequest:
+      description: |
+        Ошибка валидации тела, неразбираемый JSON или неверные параметры запроса
+        (`from` меньше 0 или не кратен размеру страницы, `size` меньше 1,
+        нечисловые значения параметров).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            validation:
+              summary: Не прошла валидация тела
+              value:
+                error: Ошибка валидации
+                description: Список шин обязателен
+
+    NotFound:
+      description: Мост с указанным именем не найден.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    MethodNotAllowed:
+      description: HTTP-метод не поддерживается для этого эндпоинта.
+      headers:
+        Allow:
+          description: Поддерживаемые HTTP-методы.
+          schema:
+            type: string
+            example: GET, PATCH
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    UnsupportedMediaType:
+      description: Неподдерживаемый `Content-Type` запроса.
+      headers:
+        Accept:
+          description: Поддерживаемые типы содержимого.
+          schema:
+            type: string
+            example: application/json
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalServerError:
+      description: Внутренняя ошибка сервера. Детали исключения в ответ не попадают.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    DeviceStatus:
+      type: string
+      description: Статус моста или датчика.
+      enum:
+        - DISCOVERED
+        - ACTIVE
+        - TEMPORARILY_UNAVAILABLE
+        - DISABLED
+        - RETIRED
+
+    MetricType:
+      type: string
+      nullable: true
+      description: Тип измеряемой величины канала.
+      enum:
+        - TEMPERATURE
+        - PRESSURE
+        - HUMIDITY
+        - ILLUMINANCE
+
+    BridgeShort:
+      type: object
+      description: Краткая информация о мосте без топологии.
+      required:
+        - id
+        - name
+        - status
+        - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 100
+        status:
+          $ref: '#/components/schemas/DeviceStatus'
+        createdAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Время последнего обращения; null, если мост ещё не выходил на связь.
+
+    Bridge:
+      description: Мост с полной топологией.
+      allOf:
+        - $ref: '#/components/schemas/BridgeShort'
+        - type: object
+          required:
+            - buses
+          properties:
+            buses:
+              type: array
+              items:
+                $ref: '#/components/schemas/Bus'
+
+    Bus:
+      type: object
+      description: Цифровая шина моста.
+      required:
+        - id
+        - name
+        - sensors
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 50
+          description: Имя шины, например `i2c1`, `spi0`, `onewire`.
+        sensors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Sensor'
+
+    Sensor:
+      type: object
+      description: Датчик на шине.
+      required:
+        - id
+        - busId
+        - sensorCode
+        - address
+        - createdAt
+        - channels
+      properties:
+        id:
+          type: integer
+          format: int64
+        busId:
+          type: integer
+          format: int64
+        sensorCode:
+          type: string
+          maxLength: 100
+          description: Код датчика, формируется bridge как `<шина>-<адрес>`.
+        address:
+          type: string
+          maxLength: 50
+        model:
+          type: string
+          maxLength: 100
+          nullable: true
+        serialNumber:
+          type: string
+          maxLength: 100
+          nullable: true
+        location:
+          type: string
+          maxLength: 100
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/Channel'
+
+    Channel:
+      type: object
+      description: Измерительный канал датчика.
+      required:
+        - id
+        - sensorId
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+        sensorId:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 50
+        metricType:
+          $ref: '#/components/schemas/MetricType'
+        unit:
+          type: string
+          maxLength: 20
+          nullable: true
+
+    BridgePage:
+      type: object
+      description: Страница мостов с метаданными пагинации.
+      required:
+        - content
+        - from
+        - size
+        - totalElements
+        - totalPages
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/BridgeShort'
+        from:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Смещение первого элемента страницы, в элементах.
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+          description: Фактический размер страницы после усечения до 100.
+        totalElements:
+          type: integer
+          format: int64
+          minimum: 0
+        totalPages:
+          type: integer
+          format: int32
+          minimum: 0
+
+    DiscoveryRequest:
+      type: object
+      description: Топология моста, полученная при сканировании шин.
+      required:
+        - buses
+      properties:
+        buses:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/BusRequest'
+
+    BusRequest:
+      type: object
+      required:
+        - name
+        - sensors
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Имя шины, непустая строка до 50 символов.
+        sensors:
+          type: array
+          description: Датчики на шине; список может быть пустым, но не null.
+          items:
+            $ref: '#/components/schemas/SensorRequest'
+
+    SensorRequest:
+      type: object
+      required:
+        - sensorCode
+        - address
+        - channels
+      properties:
+        sensorCode:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Код датчика, непустая строка до 100 символов.
+        address:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Адрес на шине, непустая строка до 50 символов.
+        model:
+          type: string
+          maxLength: 100
+          nullable: true
+        serialNumber:
+          type: string
+          maxLength: 50
+          nullable: true
+        location:
+          type: string
+          maxLength: 100
+          nullable: true
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelRequest'
+
+    ChannelRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Имя канала, непустая строка до 50 символов.
+        metricType:
+          $ref: '#/components/schemas/MetricType'
+        unit:
+          type: string
+          maxLength: 20
+          nullable: true
+
+    BridgeStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/DeviceStatus'
+
+    Health:
+      type: object
+      description: Ответ Actuator health; детали проверок скрыты настройкой `show-details=never`.
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          description: Итоговый статус приложения.
+          enum:
+            - UP
+            - DOWN
+            - OUT_OF_SERVICE
+            - UNKNOWN
+
+    ErrorResponse:
+      type: object
+      description: Единый формат ошибки.
+      required:
+        - error
+        - description
+      properties:
+        error:
+          type: string
+          description: Краткое название ошибки.
+        description:
+          type: string
+          description: Подробное описание причины.
