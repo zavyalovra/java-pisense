@@ -1,6 +1,5 @@
 package com.github.zavyalovra.pisense.model;
 
-import com.github.zavyalovra.pisense.common.model.BatchStatus;
 import jakarta.persistence.*;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
