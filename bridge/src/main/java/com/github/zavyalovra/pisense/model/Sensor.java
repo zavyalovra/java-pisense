@@ -12,5 +12,6 @@ public interface Sensor extends AutoCloseable {
     List<Reading> read() throws SensorReadException;
 
     @Override
-    default void close() { }
+    default void close() {
+    }
 }
